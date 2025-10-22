@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>抖音视频AI总结工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .main-content {
+            padding: 40px;
+        }
+        
+        .input-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+            font-family: inherit;
+            resize: vertical;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status-section {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .status-processing {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .status-completed {
+            background: #e8f5e8;
+            border-left: 4px solid #4caf50;
+        }
+        
+        .status-failed {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+        }
+        
+        .status-text {
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .result-section {
+            margin-top: 30px;
+            display: none;
+        }
+        
+        .result-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        }
+        
+        .result-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .result-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            margin-right: 10px;
+            border-radius: 2px;
+        }
+        
+        .result-content {
+            line-height: 1.6;
+            color: #555;
+        }
+        
+        /* 富文本样式 */
+        .rich-text-content {
+            line-height: 1.6;
+            color: #555;
+        }
+        
+        .rich-text-content h1,
+        .rich-text-content h2,
+        .rich-text-content h3,
+        .rich-text-content h4,
+        .rich-text-content h5,
+        .rich-text-content h6 {
+            color: #333;
+            margin: 20px 0 10px 0;
+            font-weight: 600;
+        }
+        
+        .rich-text-content h1 {
+            font-size: 1.5em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 5px;
+        }
+        
+        .rich-text-content h2 {
+            font-size: 1.3em;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 3px;
+        }
+        
+        .rich-text-content h3 {
+            font-size: 1.2em;
+        }
+        
+        .rich-text-content ul,
+        .rich-text-content ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .rich-text-content li {
+            margin: 5px 0;
+        }
+        
+        .rich-text-content p {
+            margin: 10px 0;
+        }
+        
+        .rich-text-content strong {
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .rich-text-content em {
+            color: #666;
+            font-style: italic;
+        }
+        
+        .rich-text-content code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #e74c3c;
+        }
+        
+        .rich-text-content pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            border-left: 4px solid #667eea;
+        }
+        
+        .rich-text-content pre code {
+            background: none;
+            padding: 0;
+            color: #333;
+        }
+        
+        .rich-text-content blockquote {
+            border-left: 4px solid #667eea;
+            margin: 15px 0;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .rich-text-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        
+        .rich-text-content th,
+        .rich-text-content td {
+            border: 1px solid #e9ecef;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .rich-text-content th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .rich-text-content hr {
+            border: none;
+            height: 1px;
+            background: #e9ecef;
+            margin: 20px 0;
+        }
+        
+        .video-player {
+            width: 100%;
+            max-width: 500px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .audio-player {
+            width: 100%;
+            max-width: 400px;
+            margin-bottom: 20px;
+        }
+        
+        .file-links {
+            margin-top: 15px;
+        }
+        
+        .file-link {
+            display: inline-block;
+            background: #f8f9fa;
+            color: #667eea;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        
+        .file-link:hover {
+            background: #e9ecef;
+        }
+        
+        .nav-links {
+            text-align: center;
+            margin-top: 30px;
+        }
+        
+        .nav-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 0 15px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            transition: background 0.3s;
+        }
+        
+        .nav-link:hover {
+            background: #f8f9fa;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            color: #f44336;
+            background: #ffebee;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border-left: 4px solid #f44336;
+        }
+        
+        .success-message {
+            color: #4caf50;
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border-left: 4px solid #4caf50;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+            
+            .input-section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 抖音视频AI总结工具</h1>
+            <p>输入抖音链接，自动下载视频、提取音频、转文字并AI总结</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="input-section">
+                <form id="videoForm">
+                    <div class="form-group">
+                        <label for="videoUrl">抖音视频链接或包含链接的文本</label>
+                        <textarea id="videoUrl" name="videoUrl" rows="3"
+                               placeholder="支持以下输入方式：&#10;1. 直接输入抖音链接：https://v.douyin.com/xxxxx&#10;2. 粘贴包含链接的文本（会自动提取链接）&#10;3. 复制抖音分享的完整文本内容" required></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="apiKey">DeepSeek API密钥 
+                            {% if api_key_configured %}
+                                <span style="color: #4caf50; font-size: 0.9em;">✓ 已配置</span>
+                            {% else %}
+                                <span style="color: #f44336; font-size: 0.9em;">⚠ 未配置</span>
+                            {% endif %}
+                        </label>
+                        <input type="password" id="apiKey" name="apiKey" 
+                               placeholder="{% if api_key_configured %}已在settings.json中配置，此处可留空{% else %}输入API密钥以启用AI总结功能{% endif %}">
+                        <div style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                            {% if api_key_configured %}
+                                ✅ API密钥已在Volume/settings.json中配置，AI总结功能已启用
+                            {% else %}
+                                ⚠️ 未检测到API密钥配置，请在Volume/settings.json中添加"deepseek_api_key"字段
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn" id="submitBtn">
+                        开始处理视频
+                    </button>
+                </form>
+            </div>
+            
+            <div class="status-section" id="statusSection">
+                <div class="status-text" id="statusText">正在处理视频...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div id="statusMessage">请稍候，正在下载视频...</div>
+            </div>
+            
+            <div class="result-section" id="resultSection">
+                <!-- 结果内容将通过JavaScript动态填充 -->
+            </div>
+            
+            <div class="example-section" style="background: #f8f9fa; border-radius: 15px; padding: 20px; margin-top: 20px;">
+                <h3 style="color: #333; margin-bottom: 15px;">💡 使用示例</h3>
+                <div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+                    <p style="margin-bottom: 10px; font-weight: 600;">支持以下输入方式：</p>
+                    <ol style="margin-left: 20px; line-height: 1.6;">
+                        <li><strong>直接链接：</strong> <code>https://v.douyin.com/yqwxepVbuVY/</code></li>
+                        <li><strong>复制分享文本：</strong> 直接粘贴抖音分享的完整文本内容</li>
+                        <li><strong>包含链接的文本：</strong> 系统会自动提取其中的抖音链接</li>
+                    </ol>
+                    <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                        <strong>示例文本：</strong><br>
+                        <code style="font-size: 0.9em; color: #666;">
+                        9.94 复制打开抖音，看看【罗一尘的作品】💌财富快车道(完整版)——财富自由白皮书# 觉醒#... https://v.douyin.com/yqwxepVbuVY/ NwF:/ 01/18 w@f.bA
+                        </code>
+                    </div>
+                </div>
+            </div>
+            
+            {% if not api_key_configured %}
+            <div class="config-section" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 15px; padding: 20px; margin-top: 30px;">
+                <h3 style="color: #856404; margin-bottom: 15px;">🔧 API密钥配置说明</h3>
+                <p style="color: #856404; margin-bottom: 10px;">为了使用AI总结功能，请在 <code>Volume/settings.json</code> 文件中添加以下配置：</p>
+                <pre style="background: #f8f9fa; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 0.9em;"><code>{
+  "deepseek_api_key": "your_deepseek_api_key_here",
+  ...
+}</code></pre>
+                <p style="color: #856404; font-size: 0.9em; margin-top: 10px;">
+                    💡 配置完成后重启Web应用即可生效，无需每次输入API密钥
+                </p>
+            </div>
+            {% endif %}
+            
+            <div class="nav-links">
+                <a href="/history" class="nav-link">📚 查看历史记录</a>
+                <a href="/docs" class="nav-link">📖 API文档</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('videoForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const statusSection = document.getElementById('statusSection');
+        const resultSection = document.getElementById('resultSection');
+        const statusText = document.getElementById('statusText');
+        const progressFill = document.getElementById('progressFill');
+        const statusMessage = document.getElementById('statusMessage');
+        
+        let currentRecordId = null;
+        let statusCheckInterval = null;
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const url = document.getElementById('videoUrl').value;
+            const apiKey = document.getElementById('apiKey').value;
+            
+            if (!url) {
+                showError('请输入视频链接');
+                return;
+            }
+            
+            try {
+                // 禁用表单
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<div class="loading-spinner"></div>处理中...';
+                
+                // 显示状态区域
+                showStatus('processing', '正在处理视频...', '请稍候，正在下载视频...');
+                
+                // 发送请求
+                const response = await fetch('/api/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        url: url,
+                        api_key: apiKey || null
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    currentRecordId = result.record_id;
+                    
+                    // 显示提取信息
+                    if (result.extracted_url) {
+                        showStatus('processing', '正在处理视频...', 
+                                 `已从文本中提取到链接: ${result.extracted_url}<br>请稍候，正在下载视频...`);
+                    } else {
+                        showStatus('processing', '正在处理视频...', '请稍候，正在下载视频...');
+                    }
+                    
+                    startStatusCheck();
+                } else {
+                    showError(result.message || '处理失败');
+                    resetForm();
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError('网络错误，请重试');
+                resetForm();
+            }
+        });
+        
+        function showStatus(status, text, message) {
+            statusSection.style.display = 'block';
+            statusSection.className = `status-section status-${status}`;
+            statusText.textContent = text;
+            statusMessage.innerHTML = message;
+            
+            // 更新进度条
+            if (status === 'processing') {
+                progressFill.style.width = '30%';
+            } else if (status === 'completed') {
+                progressFill.style.width = '100%';
+            }
+        }
+        
+        function showError(message) {
+            statusSection.style.display = 'block';
+            statusSection.className = 'status-section status-failed';
+            statusText.textContent = '处理失败';
+            statusMessage.innerHTML = `<div class="error-message">${message}</div>`;
+            resetForm();
+        }
+        
+        function showSuccess(record) {
+            statusSection.style.display = 'block';
+            statusSection.className = 'status-section status-completed';
+            statusText.textContent = '处理完成';
+            statusMessage.innerHTML = '<div class="success-message">视频处理成功！</div>';
+            
+            // 显示结果
+            displayResult(record);
+            resetForm();
+        }
+        
+        function displayResult(record) {
+            resultSection.style.display = 'block';
+            
+            let html = '';
+            
+            // 视频播放器
+            if (record.video_path) {
+                // 处理文件路径，确保正确映射到实际文件位置
+                const fileName = record.video_path.split('/').pop();
+                const videoUrl = `/downloads/Download/${fileName}`;
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">🎥 视频</div>
+                        <video controls class="video-player">
+                            <source src="${videoUrl}" type="video/mp4">
+                            您的浏览器不支持视频播放。
+                        </video>
+                    </div>
+                `;
+            }
+            
+            // 音频播放器
+            if (record.audio_path) {
+                const fileName = record.audio_path.split('/').pop();
+                const audioUrl = `/downloads/Download/${fileName}`;
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">🎵 音频</div>
+                        <audio controls class="audio-player">
+                            <source src="${audioUrl}" type="audio/wav">
+                            您的浏览器不支持音频播放。
+                        </audio>
+                    </div>
+                `;
+            }
+            
+            // 转录文本
+            if (record.transcription) {
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">📝 语音转文字</div>
+                        <div class="result-content">${record.transcription}</div>
+                    </div>
+                `;
+            }
+            
+            // AI总结
+            if (record.summary) {
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">🤖 AI总结</div>
+                        <div class="rich-text-content">${renderMarkdown(record.summary)}</div>
+                    </div>
+                `;
+            }
+            
+            // 文件链接
+            html += `
+                <div class="result-card">
+                    <div class="result-title">📁 文件下载</div>
+                    <div class="file-links">
+            `;
+            
+            if (record.video_path) {
+                const fileName = record.video_path.split('/').pop();
+                const videoUrl = `/downloads/Download/${fileName}`;
+                html += `<a href="${videoUrl}" class="file-link" download>📹 下载视频</a>`;
+            }
+            
+            if (record.audio_path) {
+                const fileName = record.audio_path.split('/').pop();
+                const audioUrl = `/downloads/Download/${fileName}`;
+                html += `<a href="${audioUrl}" class="file-link" download>🎵 下载音频</a>`;
+            }
+            
+            if (record.transcription_file) {
+                const fileName = record.transcription_file.split('/').pop();
+                const transcriptionUrl = `/downloads/Download/${fileName}`;
+                html += `<a href="${transcriptionUrl}" class="file-link" download>📄 下载转录文本</a>`;
+            }
+            
+            if (record.summary_file) {
+                const fileName = record.summary_file.split('/').pop();
+                const summaryUrl = `/downloads/Download/${fileName}`;
+                html += `<a href="${summaryUrl}" class="file-link" download>📋 下载总结</a>`;
+            }
+            
+            html += `
+                    </div>
+                </div>
+            `;
+            
+            resultSection.innerHTML = html;
+        }
+        
+        function startStatusCheck() {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+            
+            statusCheckInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/status/${currentRecordId}`);
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        const record = result.record;
+                        
+                        if (record.status === 'completed') {
+                            clearInterval(statusCheckInterval);
+                            showSuccess(record);
+                        } else if (record.status === 'failed') {
+                            clearInterval(statusCheckInterval);
+                            showError('视频处理失败，请检查链接是否正确');
+                        } else if (record.status === 'processing') {
+                            // 更新进度
+                            progressFill.style.width = '60%';
+                            statusMessage.textContent = '正在处理音频和文字...';
+                        }
+                    }
+                } catch (error) {
+                    console.error('Status check error:', error);
+                }
+            }, 2000);
+        }
+        
+        function resetForm() {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '开始处理视频';
+            currentRecordId = null;
+            
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+                statusCheckInterval = null;
+            }
+        }
+        
+        // Markdown渲染函数
+        function renderMarkdown(text) {
+            if (!text) return '';
+            
+            // 配置marked选项
+            marked.setOptions({
+                breaks: true,  // 支持换行
+                gfm: true,     // 支持GitHub风格的Markdown
+                sanitize: false, // 允许HTML标签
+                smartLists: true,
+                smartypants: true
+            });
+            
+            try {
+                return marked.parse(text);
+            } catch (error) {
+                console.error('Markdown渲染错误:', error);
+                // 如果Markdown渲染失败，回退到简单的换行处理
+                return text.replace(/\n/g, '<br>');
+            }
+        }
+        
+        // 页面加载时检查是否有未完成的处理
+        window.addEventListener('load', () => {
+            // 可以在这里添加检查未完成任务的功能
+        });
+    </script>
+</body>
+</html>
