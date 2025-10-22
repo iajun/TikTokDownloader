@@ -28,3 +28,6 @@ rookiepy==0.5.6
     # via douk-downloader (pyproject.toml)
 uvicorn==0.35.0
     # via douk-downloader (pyproject.toml)
+openai==2.6.0
+openai-whisper==20250625
+numpy==1.26.4
