@@ -22,6 +22,13 @@ dependencies = [
     "rich>=13.9.4",
     "rookiepy>=0.5.6",
     "uvicorn>=0.34.0",
+    "sqlalchemy>=2.0.0",
+    "pymysql>=1.1.0",
+    "psycopg2-binary>=2.9.10",
+    "cryptography>=44.0.0",
+    "minio>=7.2.0",
+    "python-multipart>=0.0.20",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.urls]

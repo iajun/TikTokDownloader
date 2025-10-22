@@ -801,13 +801,15 @@ class Downloader:
 
     def generate_detail_name(self, data: dict) -> str:
         """生成作品文件名称"""
-        return beautify_string(
+        n = beautify_string(
             self.cleaner.filter_name(
                 self.split.join(data[i] for i in self.name_format),
                 data["id"],
             ),
             length=self.name_length,
         )
+        print(f"生成作品文件名称: {n}")
+        return n
 
     def generate_music_name(self, data: dict) -> str:
         """生成音乐文件名称"""
