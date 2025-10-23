@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务管理 - 抖音视频AI总结工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .main-content {
+            padding: 40px;
+        }
+        
+        .stats-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .stat-running { color: #2196f3; }
+        .stat-pending { color: #ff9800; }
+        .stat-completed { color: #4caf50; }
+        .stat-failed { color: #f44336; }
+        
+        .tasks-section {
+            margin-top: 30px;
+        }
+        
+        .task-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        
+        .task-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .task-id {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #666;
+            background: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .task-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-downloading { background: #cce5ff; color: #0066cc; }
+        .status-processing { background: #d4edda; color: #155724; }
+        .status-completed { background: #d1ecf1; color: #0c5460; }
+        .status-failed { background: #f8d7da; color: #721c24; }
+        .status-cancelled { background: #e2e3e5; color: #383d41; }
+        
+        .task-url {
+            font-size: 0.9rem;
+            color: #667eea;
+            word-break: break-all;
+            margin-bottom: 10px;
+        }
+        
+        .task-progress {
+            margin-bottom: 10px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s;
+        }
+        
+        .task-message {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .task-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .btn-cancel {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-cancel:hover {
+            background: #d32f2f;
+        }
+        
+        .btn-view {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-view:hover {
+            background: #5a6fd8;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .nav-links {
+            text-align: center;
+            margin-top: 30px;
+        }
+        
+        .nav-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 0 15px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            transition: background 0.3s;
+        }
+        
+        .nav-link:hover {
+            background: #f8f9fa;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .main-content {
+                padding: 20px;
+            }
+            
+            .task-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .task-actions {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 任务管理</h1>
+            <p>查看和管理所有视频处理任务</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="stats-section" id="statsSection">
+                <div class="stat-card">
+                    <div class="stat-number stat-running" id="runningCount">0</div>
+                    <div class="stat-label">运行中</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number stat-pending" id="pendingCount">0</div>
+                    <div class="stat-label">等待中</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number stat-completed" id="completedCount">0</div>
+                    <div class="stat-label">已完成</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number stat-failed" id="failedCount">0</div>
+                    <div class="stat-label">失败</div>
+                </div>
+            </div>
+            
+            <div class="tasks-section">
+                <div id="tasksContainer">
+                    <div class="empty-state">
+                        <div class="loading-spinner"></div>
+                        <h3>加载任务中...</h3>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="nav-links">
+                <a href="/" class="nav-link">🏠 返回首页</a>
+                <a href="/history" class="nav-link">📚 查看历史记录</a>
+                <a href="/docs" class="nav-link">📖 API文档</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tasksList = [];
+        let refreshInterval = null;
+        
+        async function loadTasks() {
+            try {
+                const response = await fetch('/api/tasks');
+                const result = await response.json();
+                
+                if (result.success) {
+                    tasksList = result.tasks;
+                    updateStats();
+                    renderTasks();
+                } else {
+                    showError('加载任务失败');
+                }
+            } catch (error) {
+                console.error('Failed to load tasks:', error);
+                showError('网络错误，请重试');
+            }
+        }
+        
+        function updateStats() {
+            const runningCount = tasksList.filter(task => 
+                task.status === 'downloading' || task.status === 'processing'
+            ).length;
+            const pendingCount = tasksList.filter(task => task.status === 'pending').length;
+            const completedCount = tasksList.filter(task => task.status === 'completed').length;
+            const failedCount = tasksList.filter(task => task.status === 'failed').length;
+            
+            document.getElementById('runningCount').textContent = runningCount;
+            document.getElementById('pendingCount').textContent = pendingCount;
+            document.getElementById('completedCount').textContent = completedCount;
+            document.getElementById('failedCount').textContent = failedCount;
+        }
+        
+        function renderTasks() {
+            const container = document.getElementById('tasksContainer');
+            
+            if (tasksList.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>暂无任务</h3>
+                        <p>还没有创建任何视频处理任务</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 按创建时间倒序排列
+            const sortedTasks = [...tasksList].sort((a, b) => 
+                new Date(b.created_at) - new Date(a.created_at)
+            );
+            
+            const html = sortedTasks.map(task => `
+                <div class="task-card">
+                    <div class="task-header">
+                        <div class="task-id">${task.id.substring(0, 8)}...</div>
+                        <div class="task-status status-${task.status}">${getStatusText(task.status)}</div>
+                    </div>
+                    
+                    <div class="task-url">${task.url}</div>
+                    
+                    <div class="task-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${task.progress}%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="task-message">${task.message || '无消息'}</div>
+                    
+                    ${task.error ? `<div style="color: #f44336; font-size: 0.9rem; margin-bottom: 10px;">错误: ${task.error}</div>` : ''}
+                    
+                    <div class="task-actions">
+                        ${canCancelTask(task.status) ? 
+                            `<button class="btn btn-cancel" onclick="cancelTask('${task.id}')">取消任务</button>` : 
+                            ''
+                        }
+                        ${task.status === 'completed' ? 
+                            `<button class="btn btn-view" onclick="viewResult('${task.id}')">查看结果</button>` : 
+                            ''
+                        }
+                    </div>
+                    
+                    <div style="font-size: 0.8rem; color: #999; margin-top: 10px;">
+                        创建时间: ${formatDateTime(task.created_at)}
+                        ${task.started_at ? ` | 开始时间: ${formatDateTime(task.started_at)}` : ''}
+                        ${task.completed_at ? ` | 完成时间: ${formatDateTime(task.completed_at)}` : ''}
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = html;
+        }
+        
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': '等待中',
+                'downloading': '下载中',
+                'processing': '处理中',
+                'completed': '已完成',
+                'failed': '失败',
+                'cancelled': '已取消'
+            };
+            return statusMap[status] || status;
+        }
+        
+        function canCancelTask(status) {
+            return ['pending', 'downloading', 'processing'].includes(status);
+        }
+        
+        async function cancelTask(taskId) {
+            if (!confirm('确定要取消这个任务吗？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/task/${taskId}/cancel`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    await loadTasks();
+                } else {
+                    alert('取消任务失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Failed to cancel task:', error);
+                alert('取消任务失败');
+            }
+        }
+        
+        function viewResult(taskId) {
+            // 跳转到详情页面
+            window.open(`/detail/${encodeURIComponent(taskId)}`, '_blank');
+        }
+        
+        function formatDateTime(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleString('zh-CN');
+        }
+        
+        function showError(message) {
+            const container = document.getElementById('tasksContainer');
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>加载失败</h3>
+                    <p>${message}</p>
+                    <button class="btn btn-view" onclick="loadTasks()" style="margin-top: 15px;">重试</button>
+                </div>
+            `;
+        }
+        
+        function startAutoRefresh() {
+            refreshInterval = setInterval(loadTasks, 3000); // 每3秒刷新一次
+        }
+        
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        }
+        
+        // 页面加载时开始加载任务
+        window.addEventListener('load', () => {
+            loadTasks();
+            startAutoRefresh();
+        });
+        
+        // 页面卸载时停止自动刷新
+        window.addEventListener('beforeunload', () => {
+            stopAutoRefresh();
+        });
+        
+        // 页面可见性变化时控制自动刷新
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                startAutoRefresh();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -133,8 +133,8 @@ class VideoAISummarizer:
             # 先生成转录文件路径
             transcription_file = video_folder / f"{video_name}_transcription.txt"
             
-            # 传递转录文件路径给transcribe_audio方法
-            transcription = self.transcription_service.transcribe_audio(audio_path, str(transcription_file))
+            # 传递转录文件路径给transcribe_async方法（异步版本）
+            transcription = await self.transcription_service.transcribe_async(audio_path, str(transcription_file))
             if not transcription:
                 return result
             result["transcription"] = transcription
@@ -162,6 +162,60 @@ class VideoAISummarizer:
             
         except Exception as e:
             print(f"处理视频失败: {str(e)}")
+            return result
+    
+    async def summarize_audio_only(self, audio_path: str, output_dir: Optional[str] = None, 
+                                  keep_files: bool = False) -> dict:
+        """仅对音频进行转录和总结（用于重新总结）"""
+        result = {
+            "audio_path": audio_path,
+            "transcription": None,
+            "summary": None,
+            "transcription_file": None,
+            "summary_file": None,
+            "success": False
+        }
+        
+        try:
+            if not Path(audio_path).exists():
+                result["error"] = "音频文件不存在"
+                return result
+            
+            # 生成输出目录和文件名
+            audio_file = Path(audio_path)
+            audio_name = audio_file.stem.replace('_audio', '')  # 移除_audio后缀
+            
+            if output_dir:
+                output_path = Path(output_dir)
+            else:
+                output_path = audio_file.parent
+            
+            # 1. 语音转文字
+            transcription_file = output_path / f"{audio_name}_transcription.txt"
+            transcription = await self.transcription_service.transcribe_async(audio_path, str(transcription_file))
+            if not transcription:
+                result["error"] = "语音转文字失败"
+                return result
+            result["transcription"] = transcription
+            result["transcription_file"] = str(transcription_file)
+            
+            # 2. AI总结
+            summary = self.ai_summarizer.summarize_with_ai(transcription)
+            if not summary:
+                result["error"] = "AI总结失败"
+                return result
+            result["summary"] = summary
+            
+            # 3. 保存总结文件
+            summary_file = self.file_manager.save_text_to_file(summary, "summary", output_path, audio_name, force=True)
+            result["summary_file"] = summary_file
+            
+            result["success"] = True
+            return result
+            
+        except Exception as e:
+            print(f"重新总结失败: {str(e)}")
+            result["error"] = str(e)
             return result
 
 

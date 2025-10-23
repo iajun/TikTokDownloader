@@ -74,18 +74,74 @@
             color: white;
         }
         
+        .filters-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .filters-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 150px;
+        }
+        
+        .filter-group label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .filter-group select,
+        .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            background: white;
+        }
+        
+        .filter-group select:focus,
+        .filter-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .search-box {
+            flex: 1;
+            min-width: 200px;
+        }
+        
         .records-section {
             margin-top: 30px;
+        }
+        
+        .records-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
         }
         
         .record-card {
             background: white;
             border: 1px solid #e9ecef;
             border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 20px;
+            padding: 20px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.08);
             transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
         }
         
         .record-card:hover {
@@ -93,20 +149,53 @@
             box-shadow: 0 8px 25px rgba(0,0,0,0.15);
         }
         
+        .record-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+        }
+        
+        .record-card.status-processing::before {
+            background: linear-gradient(135deg, #2196f3, #1976d2);
+        }
+        
+        .record-card.status-completed::before {
+            background: linear-gradient(135deg, #4caf50, #388e3c);
+        }
+        
+        .record-card.status-failed::before {
+            background: linear-gradient(135deg, #f44336, #d32f2f);
+        }
+        
         .record-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
             margin-bottom: 15px;
+        }
+        
+        .record-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
         
         .record-url {
             color: #667eea;
             text-decoration: none;
-            font-weight: 600;
-            flex: 1;
-            margin-right: 20px;
+            font-size: 14px;
             word-break: break-all;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
         
         .record-url:hover {
@@ -114,9 +203,12 @@
         }
         
         .record-status {
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 14px;
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 12px;
             font-weight: 600;
             white-space: nowrap;
         }
@@ -141,7 +233,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 15px;
-            font-size: 14px;
+            font-size: 12px;
             color: #666;
         }
         
@@ -155,11 +247,91 @@
             margin-right: 5px;
         }
         
-        .record-id {
-            font-family: monospace;
+        .record-source {
             background: #f8f9fa;
             padding: 2px 8px;
             border-radius: 4px;
+            font-size: 11px;
+            color: #666;
+        }
+        
+        .record-preview {
+            margin-top: 15px;
+        }
+        
+        .preview-section {
+            margin-bottom: 10px;
+        }
+        
+        .preview-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .preview-title::before {
+            content: '';
+            width: 3px;
+            height: 12px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            margin-right: 6px;
+            border-radius: 2px;
+        }
+        
+        .preview-text {
+            font-size: 13px;
+            color: #555;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .preview-summary {
+            font-size: 13px;
+            color: #555;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .card-footer {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .view-details-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .view-details-btn:hover {
+            transform: translateY(-1px);
+        }
+        
+        .file-count {
+            font-size: 11px;
+            color: #666;
+            background: #f8f9fa;
+            padding: 2px 8px;
+            border-radius: 10px;
         }
         
         .record-content {
@@ -412,20 +584,54 @@
                 padding: 20px;
             }
             
-            .record-header {
-                flex-direction: column;
-                align-items: flex-start;
+            .filters-section {
+                padding: 15px;
             }
             
-            .record-url {
-                margin-right: 0;
-                margin-bottom: 10px;
+            .filters-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .filter-group {
+                min-width: auto;
+                width: 100%;
+            }
+            
+            .records-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .record-card {
+                padding: 15px;
+            }
+            
+            .record-title {
+                font-size: 15px;
+            }
+            
+            .record-status {
+                position: static;
+                margin-top: 10px;
+                align-self: flex-start;
             }
             
             .record-meta {
                 flex-direction: column;
                 align-items: flex-start;
+                gap: 8px;
+            }
+            
+            .card-footer {
+                flex-direction: column;
                 gap: 10px;
+                align-items: stretch;
+            }
+            
+            .view-details-btn {
+                width: 100%;
+                text-align: center;
             }
         }
     </style>
@@ -444,6 +650,40 @@
                 <a href="/docs" class="nav-link">📖 API文档</a>
             </div>
             
+            <div class="filters-section">
+                <div class="filters-row">
+                    <div class="filter-group search-box">
+                        <label for="searchInput">🔍 搜索</label>
+                        <input type="text" id="searchInput" placeholder="搜索URL、转录内容或总结...">
+                    </div>
+                    <div class="filter-group">
+                        <label for="statusFilter">📊 状态</label>
+                        <select id="statusFilter">
+                            <option value="">全部状态</option>
+                            <option value="completed">已完成</option>
+                            <option value="processing">处理中</option>
+                            <option value="failed">失败</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="sourceFilter">📁 来源</label>
+                        <select id="sourceFilter">
+                            <option value="">全部来源</option>
+                            <option value="database">数据库</option>
+                            <option value="volume">Volume目录</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="sortBy">🔄 排序</label>
+                        <select id="sortBy">
+                            <option value="date_desc">最新优先</option>
+                            <option value="date_asc">最旧优先</option>
+                            <option value="status">按状态</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
             <div class="records-section" id="recordsSection">
                 <div class="loading">
                     <div class="loading-spinner"></div>
@@ -454,13 +694,19 @@
     </div>
 
     <script>
+        let allRecords = [];
+        let filteredRecords = [];
+        
         async function loadRecords() {
             try {
                 const response = await fetch('/api/records');
                 const result = await response.json();
                 
                 if (result.success) {
-                    displayRecords(result.records);
+                    allRecords = result.records;
+                    filteredRecords = [...allRecords];
+                    displayRecords(filteredRecords);
+                    setupFilters();
                 } else {
                     showError('加载记录失败');
                 }
@@ -470,6 +716,58 @@
             }
         }
         
+        function setupFilters() {
+            const searchInput = document.getElementById('searchInput');
+            const statusFilter = document.getElementById('statusFilter');
+            const sourceFilter = document.getElementById('sourceFilter');
+            const sortBy = document.getElementById('sortBy');
+            
+            searchInput.addEventListener('input', applyFilters);
+            statusFilter.addEventListener('change', applyFilters);
+            sourceFilter.addEventListener('change', applyFilters);
+            sortBy.addEventListener('change', applyFilters);
+        }
+        
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value;
+            const sourceFilter = document.getElementById('sourceFilter').value;
+            const sortBy = document.getElementById('sortBy').value;
+            
+            filteredRecords = allRecords.filter(record => {
+                // 搜索过滤
+                const matchesSearch = !searchTerm || 
+                    record.url.toLowerCase().includes(searchTerm) ||
+                    (record.transcription && record.transcription.toLowerCase().includes(searchTerm)) ||
+                    (record.summary && record.summary.toLowerCase().includes(searchTerm));
+                
+                // 状态过滤
+                const matchesStatus = !statusFilter || record.status === statusFilter;
+                
+                // 来源过滤
+                const matchesSource = !sourceFilter || record.source === sourceFilter;
+                
+                return matchesSearch && matchesStatus && matchesSource;
+            });
+            
+            // 排序
+            filteredRecords.sort((a, b) => {
+                switch (sortBy) {
+                    case 'date_desc':
+                        return new Date(b.created_at) - new Date(a.created_at);
+                    case 'date_asc':
+                        return new Date(a.created_at) - new Date(b.created_at);
+                    case 'status':
+                        const statusOrder = { 'processing': 0, 'completed': 1, 'failed': 2 };
+                        return statusOrder[a.status] - statusOrder[b.status];
+                    default:
+                        return 0;
+                }
+            });
+            
+            displayRecords(filteredRecords);
+        }
+        
         function displayRecords(records) {
             const recordsSection = document.getElementById('recordsSection');
             
@@ -477,20 +775,20 @@
                 recordsSection.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">📝</div>
-                        <h3>暂无历史记录</h3>
-                        <p>还没有处理过任何视频，<a href="/" style="color: #667eea;">去处理第一个视频</a></p>
+                        <h3>暂无匹配记录</h3>
+                        <p>没有找到符合条件的记录，<a href="/" style="color: #667eea;">去处理第一个视频</a></p>
                     </div>
                 `;
                 return;
             }
             
-            let html = '';
+            let html = '<div class="records-grid">';
             
             records.forEach(record => {
                 html += `
-                    <div class="record-card">
+                    <div class="record-card status-${record.status}" onclick="viewDetails('${record.id}')">
                         <div class="record-header">
-                            <a href="${record.url}" target="_blank" class="record-url">${record.url}</a>
+                            <div class="record-title">${getRecordTitle(record)}</div>
                             <span class="record-status status-${record.status}">
                                 ${getStatusText(record.status)}
                             </span>
@@ -498,18 +796,25 @@
                         
                         <div class="record-meta">
                             <div class="record-date">${formatDate(record.created_at)}</div>
-                            <div class="record-id">${record.id}</div>
+                            <div class="record-source">${getSourceText(record.source)}</div>
                         </div>
                         
-                        ${getRecordContent(record)}
+                        <div class="record-preview">
+                            ${getRecordPreview(record)}
+                        </div>
+                        
+                        <div class="card-footer">
+                            <button class="view-details-btn" onclick="event.stopPropagation(); viewDetails('${record.id}')">
+                                查看详情
+                            </button>
+                            <div class="file-count">${getFileCount(record)} 个文件</div>
+                        </div>
                     </div>
                 `;
             });
             
+            html += '</div>';
             recordsSection.innerHTML = html;
-            
-            // 添加展开/收起功能
-            addExpandFunctionality();
         }
         
         function getStatusText(status) {
@@ -521,190 +826,82 @@
             return statusMap[status] || status;
         }
         
+        function getSourceText(source) {
+            const sourceMap = {
+                'database': '数据库',
+                'volume': 'Volume'
+            };
+            return sourceMap[source] || '未知';
+        }
+        
+        function getRecordTitle(record) {
+            // 尝试从URL中提取有意义的信息
+            if (record.url.includes('douyin.com')) {
+                return '抖音视频';
+            }
+            return record.url.length > 50 ? record.url.substring(0, 50) + '...' : record.url;
+        }
+        
+        function getRecordPreview(record) {
+            let preview = '';
+            
+            if (record.status === 'processing') {
+                preview = `
+                    <div class="preview-section">
+                        <div class="preview-title">⏳ 处理状态</div>
+                        <div class="preview-text">正在处理视频，请稍候...</div>
+                    </div>
+                `;
+            } else if (record.status === 'failed') {
+                preview = `
+                    <div class="preview-section">
+                        <div class="preview-title">❌ 处理失败</div>
+                        <div class="preview-text">视频处理失败，请检查链接是否正确</div>
+                    </div>
+                `;
+            } else {
+                // AI总结预览
+                if (record.summary) {
+                    preview += `
+                        <div class="preview-section">
+                            <div class="preview-title">🤖 AI总结</div>
+                            <div class="preview-summary">${record.summary.substring(0, 100)}${record.summary.length > 100 ? '...' : ''}</div>
+                        </div>
+                    `;
+                }
+                
+                // 转录文本预览
+                if (record.transcription) {
+                    preview += `
+                        <div class="preview-section">
+                            <div class="preview-title">📝 语音转文字</div>
+                            <div class="preview-text">${record.transcription.substring(0, 150)}${record.transcription.length > 150 ? '...' : ''}</div>
+                        </div>
+                    `;
+                }
+            }
+            
+            return preview;
+        }
+        
+        function getFileCount(record) {
+            let count = 0;
+            if (record.video_path) count++;
+            if (record.audio_path) count++;
+            if (record.transcription_file) count++;
+            if (record.summary_file) count++;
+            return count;
+        }
+        
+        function viewDetails(recordId) {
+            window.location.href = `/detail/${encodeURIComponent(recordId)}`;
+        }
+        
         function formatDate(dateString) {
             const date = new Date(dateString);
             return date.toLocaleString('zh-CN');
         }
         
-        function getRecordContent(record) {
-            if (record.status === 'processing') {
-                return `
-                    <div class="record-content">
-                        <div class="content-section">
-                            <div class="content-title">⏳ 处理状态</div>
-                            <div class="content-text">正在处理视频，请稍候...</div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            if (record.status === 'failed') {
-                return `
-                    <div class="record-content">
-                        <div class="content-section">
-                            <div class="content-title">❌ 处理失败</div>
-                            <div class="content-text">视频处理失败，请检查链接是否正确</div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            let html = '<div class="record-content">';
-            
-            // 视频
-            if (record.video_path) {
-                const fileName = record.video_path.split('/').pop();
-                // 根据文件来源确定URL路径
-                let videoUrl;
-                if (record.source === 'volume') {
-                    videoUrl = `/download/${record.video_path}`;
-                } else {
-                    videoUrl = `/downloads/Download/${fileName}`;
-                }
-                html += `
-                    <div class="content-section">
-                        <div class="content-title">🎥 视频 ${record.source === 'volume' ? '(Volume)' : ''}</div>
-                        <video controls class="video-player">
-                            <source src="${videoUrl}" type="video/mp4">
-                            您的浏览器不支持视频播放。
-                        </video>
-                    </div>
-                `;
-            }
-            
-            // 音频
-            if (record.audio_path) {
-                const fileName = record.audio_path.split('/').pop();
-                // 根据文件来源确定URL路径
-                let audioUrl;
-                if (record.source === 'volume') {
-                    audioUrl = `/download/${record.audio_path}`;
-                } else {
-                    audioUrl = `/downloads/Download/${fileName}`;
-                }
-                html += `
-                    <div class="content-section">
-                        <div class="content-title">🎵 音频 ${record.source === 'volume' ? '(Volume)' : ''}</div>
-                        <audio controls class="audio-player">
-                            <source src="${audioUrl}" type="audio/wav">
-                            您的浏览器不支持音频播放。
-                        </audio>
-                    </div>
-                `;
-            }
-            
-            // AI总结
-            if (record.summary) {
-                html += `
-                    <div class="content-section">
-                        <div class="content-title">🤖 AI总结</div>
-                        <div class="rich-text-content">${renderMarkdown(record.summary)}</div>
-                    </div>
-                `;
-            }
-                        
-            // 转录文本
-            if (record.transcription) {
-                html += `
-                    <div class="content-section">
-                        <div class="content-title">📝 语音转文字</div>
-                        <div class="content-text" data-expandable="true">
-                            ${record.transcription}
-                        </div>
-                    </div>
-                `;
-            }
-
-            // 文件链接
-            html += `
-                <div class="content-section">
-                    <div class="content-title">📁 文件下载</div>
-                    <div class="file-links">
-            `;
-            
-            if (record.video_path) {
-                const fileName = record.video_path.split('/').pop();
-                let videoUrl;
-                if (record.source === 'volume') {
-                    videoUrl = `/download/${record.video_path}`;
-                } else {
-                    videoUrl = `/downloads/Download/${fileName}`;
-                }
-                html += `<a href="${videoUrl}" class="file-link" download>📹 视频</a>`;
-            }
-            
-            if (record.audio_path) {
-                const fileName = record.audio_path.split('/').pop();
-                let audioUrl;
-                if (record.source === 'volume') {
-                    audioUrl = `/download/${record.audio_path}`;
-                } else {
-                    audioUrl = `/downloads/Download/${fileName}`;
-                }
-                html += `<a href="${audioUrl}" class="file-link" download>🎵 音频</a>`;
-            }
-            
-            if (record.transcription_file) {
-                const fileName = record.transcription_file.split('/').pop();
-                let transcriptionUrl;
-                if (record.source === 'volume') {
-                    transcriptionUrl = `/download/${record.transcription_file}`;
-                } else {
-                    transcriptionUrl = `/downloads/Download/${fileName}`;
-                }
-                html += `<a href="${transcriptionUrl}" class="file-link" download>📄 转录</a>`;
-            }
-            
-            if (record.summary_file) {
-                const fileName = record.summary_file.split('/').pop();
-                let summaryUrl;
-                if (record.source === 'volume') {
-                    summaryUrl = `/download/${record.summary_file}`;
-                } else {
-                    summaryUrl = `/downloads/Download/${fileName}`;
-                }
-                html += `<a href="${summaryUrl}" class="file-link" download>📋 总结</a>`;
-            }
-            
-            html += `
-                    </div>
-                </div>
-            `;
-            
-            html += '</div>';
-            return html;
-        }
-        
-        function addExpandFunctionality() {
-            const expandableTexts = document.querySelectorAll('.content-text[data-expandable="true"]');
-            
-            expandableTexts.forEach(textElement => {
-                const text = textElement.innerHTML;
-                const words = text.split(' ');
-                
-                if (words.length > 50) { // 如果文本超过50个词，添加展开功能
-                    const shortText = words.slice(0, 50).join(' ') + '...';
-                    textElement.innerHTML = shortText;
-                    
-                    const expandBtn = document.createElement('button');
-                    expandBtn.className = 'expand-btn';
-                    expandBtn.textContent = '展开';
-                    expandBtn.onclick = () => {
-                        if (textElement.classList.contains('expanded')) {
-                            textElement.innerHTML = shortText;
-                            expandBtn.textContent = '展开';
-                            textElement.classList.remove('expanded');
-                        } else {
-                            textElement.innerHTML = text;
-                            expandBtn.textContent = '收起';
-                            textElement.classList.add('expanded');
-                        }
-                    };
-                    
-                    textElement.parentNode.appendChild(expandBtn);
-                }
-            });
-        }
         
         function showError(message) {
             const recordsSection = document.getElementById('recordsSection');

@@ -137,7 +137,11 @@ class VideoProcessor:
         try:
             # 确保ids是字符串
             video_id = ids[0] if isinstance(ids, list) else ids
-            return await self.downloader.database.has_download_data(video_id)
+            
+            # 在Web应用环境中，跳过数据库检查，直接检查文件是否存在
+            print("跳过数据库检查，直接检查文件是否存在")
+            return False
+                
         except Exception as e:
             print(f"检查下载记录失败: {str(e)}")
             return False
@@ -169,45 +173,18 @@ class VideoProcessor:
             return video_id
     
     def _generate_detail_name(self, data: dict) -> str:
-        """生成作品文件名称，使用与download.py相同的逻辑"""
+        """生成作品文件名称，使用与download.py完全相同的命名规则"""
         try:
-            # 获取name_format配置
-            name_format = self.downloader.parameter.name_format
-            split = self.downloader.parameter.split
-            name_length = self.downloader.parameter.name_length
-            
-            print(f"name_format: {name_format}")
-            print(f"split: {split}")
-            print(f"name_length: {name_length}")
-            
-            # 根据name_format生成名称
-            name_parts = []
-            for field in name_format:
-                if field in data:
-                    value = str(data[field])
-                    # 如果是create_time，需要格式化
-                    if field == "create_time" and value:
-                        try:
-                            from datetime import datetime
-                            # 假设create_time是时间戳
-                            if value.isdigit():
-                                dt = datetime.fromtimestamp(int(value))
-                                value = dt.strftime(self.downloader.parameter.date_format)
-                        except:
-                            pass
-                    name_parts.append(value)
-                else:
-                    print(f"字段 {field} 不存在于数据中")
-            
-            # 使用split连接
-            name = split.join(name_parts)
-            
-            # 使用cleaner过滤名称
-            name = self.downloader.parameter.CLEANER.filter_name(name, data.get("id", ""))
-            
-            # 使用beautify_string处理
+            # 使用与download.py完全相同的逻辑
             from src.tools import beautify_string
-            name = beautify_string(name, name_length)
+            
+            name = beautify_string(
+                self.downloader.parameter.CLEANER.filter_name(
+                    self.downloader.parameter.split.join(data[i] for i in self.downloader.parameter.name_format),
+                    data["id"],
+                ),
+                length=self.downloader.parameter.name_length,
+            )
             
             print(f"生成的视频名称: {name}")
             return name
@@ -221,14 +198,8 @@ class VideoProcessor:
         try:
             print(f"清理视频 {ids} 的已存在文件和记录...")
             
-            # 1. 删除数据库记录
-            try:
-                # 确保ids是字符串
-                video_id = ids[0] if isinstance(ids, list) else ids
-                await self.downloader.database.delete_download_data(video_id)
-                print(f"已删除数据库记录: {video_id}")
-            except Exception as e:
-                print(f"删除数据库记录失败: {str(e)}")
+            # 1. 跳过数据库记录删除（Web应用不需要数据库）
+            print("跳过数据库记录删除")
             
             # 2. 删除已存在的视频文件
             video_path = await self._find_downloaded_video(ids, is_tiktok, video_name)
@@ -285,18 +256,20 @@ class VideoProcessor:
             print(f"清理文件和记录失败: {str(e)}")
     
     async def _find_downloaded_video(self, ids, is_tiktok: bool = False, video_name: str = None) -> Optional[str]:
-        """查找已下载的视频文件"""
+        """查找已下载的视频文件，使用与download.py相同的路径逻辑"""
         try:
             # 获取下载目录
             download_dir = Path(self.downloader.parameter.root) / "Download"
+            print(f"查找目录: {download_dir}")
             
             # 如果有视频名称，优先按名称查找
             if video_name:
                 print(f"按视频名称查找: {video_name}")
                 
+                # 使用与download.py相同的路径逻辑
                 # 根据folder_mode决定查找位置
                 if self.downloader.parameter.folder_mode:
-                    # 文件夹模式：在子文件夹中查找
+                    # 文件夹模式：文件路径是 root/name/name.mp4
                     video_folder = download_dir / video_name
                     if video_folder.exists():
                         video_patterns = [
@@ -317,51 +290,96 @@ class VideoProcessor:
                             print(f"在文件夹中找到视频文件: {video_file}")
                             return str(video_file)
                 else:
-                    # 非文件夹模式：直接在下载目录中查找
+                    # 非文件夹模式：文件路径是 root/name.mp4
+                    # 处理特殊字符和长文件名
+                    safe_video_name = self._make_filename_safe(video_name)
+                    print(f"安全文件名: {safe_video_name}")
+                    
                     video_patterns = [
-                        f"{video_name}.mp4",
-                        f"{video_name}.mov",
-                        f"{video_name}.avi",
-                        f"*{video_name}*.mp4",
-                        f"*{video_name}*.mov",
-                        f"*{video_name}*.avi"
+                        f"{safe_video_name}.mp4",
+                        f"{safe_video_name}.mov",
+                        f"{safe_video_name}.avi"
                     ]
                     
                     for pattern in video_patterns:
-                        for video_file in download_dir.glob(pattern):
+                        video_file = download_dir / pattern
+                        if video_file.exists() and video_file.stat().st_size > 0:
+                            print(f"找到视频文件: {video_file}")
+                            return str(video_file)
+                    
+                    # 如果安全文件名没找到，尝试原始文件名
+                    print("安全文件名匹配失败，尝试原始文件名...")
+                    video_patterns = [
+                        f"{video_name}.mp4",
+                        f"{video_name}.mov",
+                        f"{video_name}.avi"
+                    ]
+                    
+                    for pattern in video_patterns:
+                        video_file = download_dir / pattern
+                        if video_file.exists() and video_file.stat().st_size > 0:
+                            print(f"找到视频文件: {video_file}")
+                            return str(video_file)
+                    
+                    # 如果原始文件名也没找到，尝试beautify_string处理后的文件名
+                    print("原始文件名匹配失败，尝试beautify_string处理后的文件名...")
+                    from src.tools import beautify_string
+                    
+                    # 尝试不同的长度限制
+                    for length in [50, 64, 128]:
+                        beautified_name = beautify_string(video_name, length)
+                        print(f"beautify_string处理后的文件名 (长度{length}): {beautified_name}")
+                        
+                        video_patterns = [
+                            f"{beautified_name}.mp4",
+                            f"{beautified_name}.mov",
+                            f"{beautified_name}.avi"
+                        ]
+                        
+                        for pattern in video_patterns:
+                            video_file = download_dir / pattern
                             if video_file.exists() and video_file.stat().st_size > 0:
                                 print(f"找到视频文件: {video_file}")
+                                return str(video_file)
+                    
+                    # 如果beautify_string也没找到，尝试手动截断匹配
+                    print("beautify_string匹配失败，尝试手动截断匹配...")
+                    video_files = list(download_dir.glob("*.mp4")) + list(download_dir.glob("*.mov")) + list(download_dir.glob("*.avi"))
+                    
+                    for video_file in video_files:
+                        if video_file.exists() and video_file.stat().st_size > 0:
+                            file_stem = video_file.stem
+                            print(f"检查文件: {file_stem}")
+                            
+                            # 检查是否包含视频名称的主要部分
+                            if self._is_partial_match(file_stem, video_name):
+                                print(f"部分匹配成功，找到视频文件: {video_file}")
                                 return str(video_file)
             
             # 如果按名称没找到，尝试按ID查找
             # 确保ids是字符串
             video_id = ids[0] if isinstance(ids, list) else ids
             print(f"按视频ID查找: {video_id}")
-            video_patterns = [
-                f"*{video_id}*.mp4",
-                f"*{video_id}*.mov",
-                f"*{video_id}*.avi"
-            ]
             
-            # 在下载目录中查找视频文件
-            for pattern in video_patterns:
-                for video_file in download_dir.glob(pattern):
+            # 在下载目录中递归查找包含ID的视频文件
+            video_extensions = ["*.mp4", "*.mov", "*.avi"]
+            for ext in video_extensions:
+                for video_file in download_dir.rglob(ext):
                     if video_file.exists() and video_file.stat().st_size > 0:
-                        print(f"找到视频文件: {video_file}")
-                        return str(video_file)
+                        # 检查文件名是否包含视频ID
+                        if video_id in video_file.name:
+                            print(f"找到视频文件: {video_file}")
+                            return str(video_file)
             
-            # 如果还是没找到，尝试查找最近下载的文件
-            print("查找最近下载的视频文件...")
-            video_files = []
-            for ext in ['*.mp4', '*.mov', '*.avi']:
-                video_files.extend(download_dir.glob(ext))
+            # 最后尝试：列出所有视频文件进行调试
+            print("所有视频文件列表:")
+            all_video_files = []
+            for ext in video_extensions:
+                all_video_files.extend(download_dir.glob(ext))
             
-            if video_files:
-                # 按修改时间排序，返回最新的
-                latest_file = max(video_files, key=lambda f: f.stat().st_mtime)
-                if latest_file.stat().st_size > 0:
-                    print(f"找到最新视频文件: {latest_file}")
-                    return str(latest_file)
+            for video_file in all_video_files:
+                if video_file.exists() and video_file.stat().st_size > 0:
+                    print(f"  - {video_file.name}")
             
             print("未找到视频文件")
             return None
@@ -369,6 +387,60 @@ class VideoProcessor:
         except Exception as e:
             print(f"查找视频文件失败: {str(e)}")
             return None
+    
+    def _make_filename_safe(self, filename: str) -> str:
+        """将文件名转换为安全的文件名，支持特殊字符"""
+        try:
+            import re
+            
+            # 保留中文字符、英文字母、数字、连字符、下划线、空格
+            # 移除或替换其他特殊字符
+            safe_name = re.sub(r'[<>:"/\\|?*]', '_', filename)
+            
+            # 移除连续的下划线
+            safe_name = re.sub(r'_+', '_', safe_name)
+            
+            # 移除开头和结尾的下划线
+            safe_name = safe_name.strip('_')
+            
+            # 限制文件名长度（Windows限制为255字符，我们保守一点用200）
+            if len(safe_name) > 200:
+                safe_name = safe_name[:200]
+            
+            return safe_name
+            
+        except Exception as e:
+            print(f"文件名安全处理失败: {str(e)}")
+            return filename
+    
+    def _is_partial_match(self, file_stem: str, video_name: str) -> bool:
+        """检查文件名是否部分匹配视频名称"""
+        try:
+            # 检查文件名是否包含视频名称的主要部分
+            # 取视频名称的前30个字符进行匹配
+            name_prefix = video_name[:30]
+            
+            # 检查文件名是否以这个前缀开始
+            if file_stem.startswith(name_prefix):
+                return True
+            
+            # 检查文件名是否包含视频名称的主要关键词
+            # 提取关键词（去除特殊字符）
+            import re
+            keywords = re.findall(r'[\u4e00-\u9fff]+|[a-zA-Z0-9]+', video_name)
+            
+            # 检查是否包含足够多的关键词
+            matched_keywords = 0
+            for keyword in keywords:
+                if len(keyword) >= 2 and keyword in file_stem:
+                    matched_keywords += 1
+            
+            # 如果匹配的关键词数量超过一半，认为匹配
+            return matched_keywords >= len(keywords) // 2
+            
+        except Exception as e:
+            print(f"部分匹配检查失败: {str(e)}")
+            return False
     
     def _get_video_folder_path(self, video_name: str) -> Path:
         """获取视频文件夹路径，根据folder_mode配置决定是否创建子文件夹"""

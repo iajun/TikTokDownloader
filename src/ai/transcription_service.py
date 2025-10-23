@@ -4,6 +4,8 @@
 """
 
 import whisper
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 
@@ -14,6 +16,7 @@ class TranscriptionService:
         """初始化语音转文字服务"""
         self.whisper_model = None
         self.model_name = model_name
+        self.executor = ThreadPoolExecutor(max_workers=2)  # 限制并发转文字任务数
         self._load_model()
     
     def _load_model(self):
@@ -51,7 +54,7 @@ class TranscriptionService:
             
             print("正在转换音频为文字...")
             
-            # 使用Whisper进行语音识别
+            # 使用Whisper进行语音识别（同步方法）
             result = self.whisper_model.transcribe(audio_path, language="zh")
             text = result["text"].strip()
             
@@ -66,3 +69,24 @@ class TranscriptionService:
         except Exception as e:
             print(f"语音转文字失败: {str(e)}")
             return None
+    
+    async def transcribe_async(self, audio_path: str, transcription_file_path: Optional[str] = None) -> Optional[str]:
+        """异步语音转文字（在线程池中执行）"""
+        try:
+            # 在线程池中执行同步的转文字操作
+            loop = asyncio.get_event_loop()
+            text = await loop.run_in_executor(
+                self.executor, 
+                self.transcribe_audio, 
+                audio_path, 
+                transcription_file_path
+            )
+            return text
+        except Exception as e:
+            print(f"异步语音转文字失败: {str(e)}")
+            return None
+    
+    def __del__(self):
+        """清理资源"""
+        if hasattr(self, 'executor'):
+            self.executor.shutdown(wait=False)
