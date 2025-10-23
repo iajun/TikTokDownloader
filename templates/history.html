@@ -554,10 +554,16 @@
             // 视频
             if (record.video_path) {
                 const fileName = record.video_path.split('/').pop();
-                const videoUrl = `/downloads/Download/${fileName}`;
+                // 根据文件来源确定URL路径
+                let videoUrl;
+                if (record.source === 'volume') {
+                    videoUrl = `/download/${record.video_path}`;
+                } else {
+                    videoUrl = `/downloads/Download/${fileName}`;
+                }
                 html += `
                     <div class="content-section">
-                        <div class="content-title">🎥 视频</div>
+                        <div class="content-title">🎥 视频 ${record.source === 'volume' ? '(Volume)' : ''}</div>
                         <video controls class="video-player">
                             <source src="${videoUrl}" type="video/mp4">
                             您的浏览器不支持视频播放。
@@ -569,26 +575,20 @@
             // 音频
             if (record.audio_path) {
                 const fileName = record.audio_path.split('/').pop();
-                const audioUrl = `/downloads/Download/${fileName}`;
+                // 根据文件来源确定URL路径
+                let audioUrl;
+                if (record.source === 'volume') {
+                    audioUrl = `/download/${record.audio_path}`;
+                } else {
+                    audioUrl = `/downloads/Download/${fileName}`;
+                }
                 html += `
                     <div class="content-section">
-                        <div class="content-title">🎵 音频</div>
+                        <div class="content-title">🎵 音频 ${record.source === 'volume' ? '(Volume)' : ''}</div>
                         <audio controls class="audio-player">
                             <source src="${audioUrl}" type="audio/wav">
                             您的浏览器不支持音频播放。
                         </audio>
-                    </div>
-                `;
-            }
-            
-            // 转录文本
-            if (record.transcription) {
-                html += `
-                    <div class="content-section">
-                        <div class="content-title">📝 语音转文字</div>
-                        <div class="content-text" data-expandable="true">
-                            ${record.transcription}
-                        </div>
                     </div>
                 `;
             }
@@ -602,7 +602,19 @@
                     </div>
                 `;
             }
-            
+                        
+            // 转录文本
+            if (record.transcription) {
+                html += `
+                    <div class="content-section">
+                        <div class="content-title">📝 语音转文字</div>
+                        <div class="content-text" data-expandable="true">
+                            ${record.transcription}
+                        </div>
+                    </div>
+                `;
+            }
+
             // 文件链接
             html += `
                 <div class="content-section">
@@ -612,25 +624,45 @@
             
             if (record.video_path) {
                 const fileName = record.video_path.split('/').pop();
-                const videoUrl = `/downloads/Download/${fileName}`;
+                let videoUrl;
+                if (record.source === 'volume') {
+                    videoUrl = `/download/${record.video_path}`;
+                } else {
+                    videoUrl = `/downloads/Download/${fileName}`;
+                }
                 html += `<a href="${videoUrl}" class="file-link" download>📹 视频</a>`;
             }
             
             if (record.audio_path) {
                 const fileName = record.audio_path.split('/').pop();
-                const audioUrl = `/downloads/Download/${fileName}`;
+                let audioUrl;
+                if (record.source === 'volume') {
+                    audioUrl = `/download/${record.audio_path}`;
+                } else {
+                    audioUrl = `/downloads/Download/${fileName}`;
+                }
                 html += `<a href="${audioUrl}" class="file-link" download>🎵 音频</a>`;
             }
             
             if (record.transcription_file) {
                 const fileName = record.transcription_file.split('/').pop();
-                const transcriptionUrl = `/downloads/Download/${fileName}`;
+                let transcriptionUrl;
+                if (record.source === 'volume') {
+                    transcriptionUrl = `/download/${record.transcription_file}`;
+                } else {
+                    transcriptionUrl = `/downloads/Download/${fileName}`;
+                }
                 html += `<a href="${transcriptionUrl}" class="file-link" download>📄 转录</a>`;
             }
             
             if (record.summary_file) {
                 const fileName = record.summary_file.split('/').pop();
-                const summaryUrl = `/downloads/Download/${fileName}`;
+                let summaryUrl;
+                if (record.source === 'volume') {
+                    summaryUrl = `/download/${record.summary_file}`;
+                } else {
+                    summaryUrl = `/downloads/Download/${fileName}`;
+                }
                 html += `<a href="${summaryUrl}" class="file-link" download>📋 总结</a>`;
             }
             

@@ -39,7 +39,8 @@ except ImportError as e:
     print("请运行: pip install fastapi uvicorn jinja2 python-multipart")
     sys.exit(1)
 
-from video_ai_summarizer import VideoAISummarizer, load_api_key_from_settings
+from src.ai import VideoAISummarizer
+from src.ai.main_cli import load_api_key_from_settings
 
 
 def extract_douyin_url(text: str) -> Optional[str]:
@@ -101,6 +102,7 @@ class WebApp:
         self.templates_dir = Path("templates")
         self.data_dir = Path("downloads/Data")  # 使用与video_ai_summarizer一致的路径
         self.downloads_dir = Path("downloads")
+        self.volume_download_dir = Path("Volume/Download")  # Volume目录
         
         for dir_path in [self.static_dir, self.templates_dir, self.data_dir, self.downloads_dir]:
             dir_path.mkdir(exist_ok=True)
@@ -166,11 +168,123 @@ class WebApp:
     
     def _get_record(self, record_id: str) -> Optional[dict]:
         """获取单个记录"""
+        # 先从数据库查找
         records = self._load_records()
         for record in records:
             if record['id'] == record_id:
                 return record
+        
+        # 如果数据库中没有，从Volume目录中查找
+        volume_records = self._scan_existing_files()
+        for record in volume_records:
+            if record['id'] == record_id:
+                return record
+        
         return None
+    
+    def _scan_existing_files(self) -> List[dict]:
+        """扫描Volume/Download目录中的现有文件"""
+        existing_records = []
+        
+        if not self.volume_download_dir.exists():
+            return existing_records
+        
+        try:
+            # 扫描所有视频文件
+            video_files = []
+            for ext in ['*.mp4', '*.mov', '*.avi']:
+                video_files.extend(self.volume_download_dir.glob(ext))
+            
+            for video_file in video_files:
+                video_name = video_file.stem  # 不带扩展名的文件名
+                
+                # 查找对应的音频、转录和总结文件
+                audio_file = self.volume_download_dir / f"{video_name}_audio.wav"
+                transcription_file = self.volume_download_dir / f"{video_name}_transcription.txt"
+                summary_file = self.volume_download_dir / f"{video_name}_summary.txt"
+                
+                # 读取文件内容
+                transcription = None
+                summary = None
+                
+                if transcription_file.exists():
+                    try:
+                        with open(transcription_file, 'r', encoding='utf-8') as f:
+                            transcription = f.read().strip()
+                    except:
+                        pass
+                
+                if summary_file.exists():
+                    try:
+                        with open(summary_file, 'r', encoding='utf-8') as f:
+                            summary = f.read().strip()
+                    except:
+                        pass
+                
+                # 获取文件修改时间作为创建时间
+                file_time = datetime.fromtimestamp(video_file.stat().st_mtime)
+                
+                # 创建记录
+                record = {
+                    "id": f"existing_{video_name}_{int(file_time.timestamp())}",
+                    "url": f"Volume/Download/{video_name}",  # 使用相对路径
+                    "video_path": str(video_file),
+                    "audio_path": str(audio_file) if audio_file.exists() else None,
+                    "transcription": transcription,
+                    "summary": summary,
+                    "transcription_file": str(transcription_file) if transcription_file.exists() else None,
+                    "summary_file": str(summary_file) if summary_file.exists() else None,
+                    "video_folder": str(self.volume_download_dir),
+                    "created_at": file_time.isoformat(),
+                    "status": "completed",
+                    "source": "volume"  # 标记来源
+                }
+                
+                existing_records.append(record)
+            
+            print(f"扫描到 {len(existing_records)} 个现有视频文件")
+            return existing_records
+            
+        except Exception as e:
+            print(f"扫描现有文件失败: {str(e)}")
+            return existing_records
+    
+    def _get_all_records(self) -> List[dict]:
+        """获取所有记录（包括数据库中的和Volume目录中的）"""
+        # 获取数据库中的记录
+        db_records = self._load_records()
+        
+        # 获取Volume目录中的现有文件
+        volume_records = self._scan_existing_files()
+        
+        # 合并记录，避免重复
+        all_records = []
+        existing_video_names = set()
+        
+        # 先添加Volume目录中的记录
+        for record in volume_records:
+            video_name = Path(record['video_path']).stem
+            if video_name not in existing_video_names:
+                all_records.append(record)
+                existing_video_names.add(video_name)
+        
+        # 再添加数据库中的记录（如果视频文件不存在）
+        for record in db_records:
+            if record.get('video_path'):
+                video_name = Path(record['video_path']).stem
+                if video_name not in existing_video_names:
+                    record['source'] = 'database'
+                    all_records.append(record)
+                    existing_video_names.add(video_name)
+            else:
+                # 如果没有视频路径，直接添加
+                record['source'] = 'database'
+                all_records.append(record)
+        
+        # 按创建时间倒序排列
+        all_records.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        return all_records
     
     def _setup_routes(self):
         """设置路由"""
@@ -186,9 +300,7 @@ class WebApp:
         @self.app.get("/history", response_class=HTMLResponse)
         async def history(request: Request):
             """历史记录页面"""
-            records = self._load_records()
-            # 按创建时间倒序排列
-            records.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            records = self._get_all_records()
             return self._render_template("history.html", {
                 "request": request,
                 "records": records
@@ -265,7 +377,7 @@ class WebApp:
         @self.app.get("/api/records")
         async def get_records():
             """获取所有记录"""
-            records = self._load_records()
+            records = self._get_all_records()
             return JSONResponse({
                 "success": True,
                 "records": records
@@ -282,6 +394,45 @@ class WebApp:
                 "success": True,
                 "record": record
             })
+        
+        @self.app.get("/download/{file_path:path}")
+        async def download_file(file_path: str):
+            """下载文件"""
+            try:
+                # 构建完整的文件路径
+                full_path = Path(file_path)
+                
+                # 安全检查：确保文件路径在允许的目录内
+                if not full_path.exists():
+                    raise HTTPException(status_code=404, detail="文件不存在")
+                
+                # 检查文件是否在允许的目录内
+                allowed_dirs = [
+                    self.downloads_dir,
+                    self.volume_download_dir,
+                    Path("Volume")
+                ]
+                
+                is_allowed = False
+                for allowed_dir in allowed_dirs:
+                    try:
+                        full_path.resolve().relative_to(allowed_dir.resolve())
+                        is_allowed = True
+                        break
+                    except ValueError:
+                        continue
+                
+                if not is_allowed:
+                    raise HTTPException(status_code=403, detail="访问被拒绝")
+                
+                return FileResponse(
+                    path=str(full_path),
+                    filename=full_path.name,
+                    media_type='application/octet-stream'
+                )
+                
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
     
     def _render_template(self, template_name: str, context: dict):
         """渲染模板"""

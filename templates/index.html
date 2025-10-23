@@ -639,17 +639,7 @@
                     </div>
                 `;
             }
-            
-            // 转录文本
-            if (record.transcription) {
-                html += `
-                    <div class="result-card">
-                        <div class="result-title">📝 语音转文字</div>
-                        <div class="result-content">${record.transcription}</div>
-                    </div>
-                `;
-            }
-            
+
             // AI总结
             if (record.summary) {
                 html += `
@@ -659,7 +649,17 @@
                     </div>
                 `;
             }
-            
+                        
+            // 转录文本
+            if (record.transcription) {
+                html += `
+                    <div class="result-card">
+                        <div class="result-title">📝 语音转文字</div>
+                        <div class="result-content">${record.transcription}</div>
+                    </div>
+                `;
+            }
+
             // 文件链接
             html += `
                 <div class="result-card">
