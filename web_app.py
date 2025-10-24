@@ -45,6 +45,7 @@ except ImportError as e:
 from src.ai import VideoAISummarizer
 from src.ai.main_cli import load_api_key_from_settings
 from src.ai.video_processor import VideoProcessor
+from src.ai.file_manager import FileManager
 from src.application import TikTokDownloader
 
 
@@ -281,6 +282,9 @@ class WebApp:
         # 初始化TikTok下载器（不创建VideoProcessor，每个任务独立创建）
         self.downloader = TikTokDownloader()
         
+        # 初始化文件管理器
+        self.file_manager = FileManager()
+        
         # 异步初始化下载器配置
         self._downloader_initialized = False
         
@@ -381,23 +385,32 @@ class WebApp:
             for video_file in video_files:
                 video_name = video_file.stem  # 不带扩展名的文件名
                 
-                # 查找对应的音频、转录和总结文件
-                audio_file = self.volume_download_dir / f"{video_name}_audio.wav"
-                transcription_file = self.volume_download_dir / f"{video_name}_transcription.txt"
-                summary_file = self.volume_download_dir / f"{video_name}_summary.txt"
+                # 使用FileManager的前缀匹配查找对应的音频、转录和总结文件
+                audio_file = self.file_manager.find_audio_file(
+                    self.volume_download_dir, 
+                    video_name
+                )
+                transcription_file = self.file_manager.find_transcription_file(
+                    self.volume_download_dir, 
+                    video_name
+                )
+                summary_file = self.file_manager.find_summary_file(
+                    self.volume_download_dir, 
+                    video_name
+                )
                 
                 # 读取文件内容
                 transcription = None
                 summary = None
                 
-                if transcription_file.exists():
+                if transcription_file and transcription_file.exists():
                     try:
                         with open(transcription_file, 'r', encoding='utf-8') as f:
                             transcription = f.read().strip()
                     except:
                         pass
                 
-                if summary_file.exists():
+                if summary_file and summary_file.exists():
                     try:
                         with open(summary_file, 'r', encoding='utf-8') as f:
                             summary = f.read().strip()
@@ -413,11 +426,11 @@ class WebApp:
                     "url": f"Volume/Download/{video_name}",  # 使用相对路径
                     "video_path": str(video_file),
                     "video_name": video_name,  # 添加原始文件名
-                    "audio_path": str(audio_file) if audio_file.exists() else None,
+                    "audio_path": str(audio_file) if audio_file and audio_file.exists() else None,
                     "transcription": transcription,
                     "summary": summary,
-                    "transcription_file": str(transcription_file) if transcription_file.exists() else None,
-                    "summary_file": str(summary_file) if summary_file.exists() else None,
+                    "transcription_file": str(transcription_file) if transcription_file and transcription_file.exists() else None,
+                    "summary_file": str(summary_file) if summary_file and summary_file.exists() else None,
                     "video_folder": str(self.volume_download_dir),
                     "created_at": file_time.isoformat(),
                     "status": "completed",
@@ -882,8 +895,8 @@ class WebApp:
                 )
                 return
             
-            # 设置输出目录
-            output_dir = str(Path("Volume"))
+            # 设置输出目录为音频文件所在的目录（即Volume/Download下的视频文件夹）
+            output_dir = str(Path(audio_path).parent)
             
             # 使用VideoAISummarizer进行重新总结
             async with VideoAISummarizer(api_key) as summarizer:

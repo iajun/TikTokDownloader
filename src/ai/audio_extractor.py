@@ -6,14 +6,15 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
+from .file_manager import FileManager
 
 
 class AudioExtractor:
     """音频提取器"""
     
     def __init__(self):
-        pass
+        self.file_manager = FileManager()
     
     def check_file_exists(self, file_path: str) -> bool:
         """检查文件是否存在且不为空"""
@@ -30,10 +31,30 @@ class AudioExtractor:
                 # 确保video_name是字符串，如果是列表则取第一个元素
                 if isinstance(video_name, list):
                     video_name = video_name[0]
+                
+                # 首先尝试前缀匹配查找已存在的音频文件
+                existing_audio = self.file_manager.find_audio_file(
+                    video_folder, 
+                    video_name
+                )
+                if existing_audio and self.check_file_exists(str(existing_audio)):
+                    print(f"找到已存在的音频文件: {existing_audio}")
+                    return str(existing_audio)
+                
                 audio_filename = f"{video_name}_audio.wav"
             else:
                 # 从视频文件名生成音频文件名
                 video_name = Path(video_path).stem
+                
+                # 首先尝试前缀匹配查找已存在的音频文件
+                existing_audio = self.file_manager.find_audio_file(
+                    video_folder, 
+                    video_name
+                )
+                if existing_audio and self.check_file_exists(str(existing_audio)):
+                    print(f"找到已存在的音频文件: {existing_audio}")
+                    return str(existing_audio)
+                
                 audio_filename = f"{video_name}_audio.wav"
             
             audio_path = video_folder / audio_filename

@@ -5,8 +5,11 @@
 
 import whisper
 import asyncio
+import re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from typing import Optional, List
+from pathlib import Path
+from .file_manager import FileManager
 
 
 class TranscriptionService:
@@ -17,6 +20,7 @@ class TranscriptionService:
         self.whisper_model = None
         self.model_name = model_name
         self.executor = ThreadPoolExecutor(max_workers=2)  # 限制并发转文字任务数
+        self.file_manager = FileManager()
         self._load_model()
     
     def _load_model(self):
@@ -28,6 +32,71 @@ class TranscriptionService:
         except Exception as e:
             print(f"加载Whisper模型失败: {str(e)}")
             raise
+    
+    def convert_punctuation_to_chinese(self, text: str) -> str:
+        """将英文标点符号转换为中文标点符号"""
+        # 使用字符串替换方法，避免特殊字符问题
+        result = text
+        result = result.replace(',', '，')
+        result = result.replace('.', '。')
+        result = result.replace('!', '！')
+        result = result.replace('?', '？')
+        result = result.replace(':', '：')
+        result = result.replace(';', '；')
+        result = result.replace('"', '"')
+        result = result.replace("'", '\u2019')
+        result = result.replace('(', '（')
+        result = result.replace(')', '）')
+        result = result.replace('[', '【')
+        result = result.replace(']', '】')
+        result = result.replace('{', '{')
+        result = result.replace('}', '}')
+        result = result.replace('-', '—')
+        result = result.replace('...', '……')
+        
+        return result
+    
+    def segment_text_by_period(self, text: str, min_length: int = 20, max_length: int = 200) -> str:
+        """根据句号进行分段，每段最少min_length字，最多max_length字"""
+        # 先按句号分割
+        sentences = text.split('。')
+        
+        segments = []
+        current_segment = ""
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            # 如果当前句子加上当前段落会超过最大长度，先保存当前段落
+            if current_segment and len(current_segment + sentence + '。') > max_length:
+                if len(current_segment) >= min_length:
+                    segments.append(current_segment)
+                    current_segment = sentence + '。'
+                else:
+                    # 如果当前段落太短，继续添加句子
+                    current_segment += sentence + '。'
+            else:
+                # 添加句子到当前段落
+                if current_segment:
+                    current_segment += sentence + '。'
+                else:
+                    current_segment = sentence
+        
+        # 处理最后一个段落
+        if current_segment:
+            # 移除末尾多余的句号
+            if current_segment.endswith('。'):
+                current_segment = current_segment[:-1]
+            if len(current_segment) >= min_length:
+                segments.append(current_segment)
+            elif segments:
+                # 如果最后一段太短，合并到前一段
+                segments[-1] += current_segment
+        
+        # 用换行符连接各段
+        return '\n\n'.join(segments)
     
     def check_file_exists(self, file_path: str) -> bool:
         """检查文件是否存在且不为空"""
@@ -51,16 +120,44 @@ class TranscriptionService:
                     return existing_text
                 else:
                     print("已存在的文件为空，重新进行转文字")
+            elif transcription_file_path:
+                # 如果提供的路径不存在，尝试前缀匹配查找
+                audio_file = Path(audio_path)
+                audio_name = audio_file.stem.replace('_audio', '')  # 移除_audio后缀
+                directory = audio_file.parent
+                
+                existing_transcription = self.file_manager.find_transcription_file(
+                    directory, 
+                    audio_name
+                )
+                
+                if existing_transcription and self.check_file_exists(str(existing_transcription)):
+                    print(f"通过前缀匹配找到转录文件: {existing_transcription}")
+                    with open(existing_transcription, 'r', encoding='utf-8') as f:
+                        existing_text = f.read().strip()
+                    if existing_text:
+                        print("使用前缀匹配找到的转录文本")
+                        return existing_text
             
             print("正在转换音频为文字...")
             
             # 使用Whisper进行语音识别（同步方法）
-            result = self.whisper_model.transcribe(audio_path, language="zh")
+            result = self.whisper_model.transcribe(audio_path, language="zh", initial_prompt="语音转文本，请在合适位置断句、分段，每段不要超过100字，并加上中文标点标号。")
             text = result["text"].strip()
             
             if text:
                 print("语音转文字成功")
-                print(f"识别内容: {text}")
+                print(f"原始识别内容: {text}")
+                
+                # 转换英文标点为中文标点
+                text = self.convert_punctuation_to_chinese(text)
+                print("已转换英文标点为中文标点")
+                
+                # 根据句号进行分段
+                text = self.segment_text_by_period(text, min_length=20, max_length=200)
+                print("已根据句号进行分段处理")
+                
+                print(f"最终处理内容: {text}")
                 return text
             else:
                 print("未识别到有效内容")
