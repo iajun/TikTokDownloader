@@ -124,7 +124,7 @@ def root():
 
 
 # 导入并注册路由
-from ..routes import tasks, settings, prompts, ai_methods, collections, files, health, summaries
+from ..routes import tasks, settings, prompts, ai_methods, collections, files, health, summaries, email_subscriptions
 
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])
 app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
@@ -134,4 +134,5 @@ app.include_router(collections.router, prefix="/api/v1", tags=["collections"])
 app.include_router(files.router, prefix="/api/v1", tags=["files"])
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(summaries.router, prefix="/api/v1", tags=["summaries"])
+app.include_router(email_subscriptions.router, prefix="/api/v1", tags=["email-subscriptions"])
 

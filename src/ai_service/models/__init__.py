@@ -13,6 +13,7 @@ from .setting import Setting, Prompt
 from .ai_method import AIMethod
 from .collection import CollectionFolder, CollectionTask
 from .video_summary import VideoSummary
+from .email_subscription import EmailSubscription
 
 # 导出所有内容，保持向后兼容
 __all__ = [
@@ -27,5 +28,6 @@ __all__ = [
     'CollectionFolder',
     'CollectionTask',
     'VideoSummary',
+    'EmailSubscription',
 ]
 

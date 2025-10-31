@@ -184,6 +184,62 @@
           </div>
         </a-tab-pane>
         
+        <a-tab-pane key="email-subscriptions" tab="邮箱订阅">
+          <div class="email-subscriptions-management">
+            <a-alert
+              type="info"
+              message="邮箱订阅说明"
+              description="订阅邮箱后，当视频总结完成时，系统会自动将视频信息和总结文档发送到您的邮箱。"
+              show-icon
+              style="margin-bottom: 24px;"
+            />
+            
+            <a-space style="margin-bottom: 24px; width: 100%;" :size="20">
+              <a-button type="primary" @click="showCreateEmailSubscriptionModal">
+                <template #icon>
+                  <component :is="h(PlusOutlined)" />
+                </template>
+                添加订阅邮箱
+              </a-button>
+            </a-space>
+            
+            <a-table
+              :columns="emailSubscriptionColumns"
+              :data-source="emailSubscriptions"
+              :pagination="false"
+              row-key="id"
+              :loading="loadingEmailSubscriptions"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'is_active'">
+                  <a-tag v-if="record.is_active" color="green">已激活</a-tag>
+                  <a-tag v-else color="default">未激活</a-tag>
+                </template>
+                <template v-if="column.key === 'created_at'">
+                  <span>{{ formatDate(record.created_at) }}</span>
+                </template>
+                <template v-if="column.key === 'actions'">
+                  <a-space>
+                    <a-button 
+                      size="small" 
+                      @click="toggleEmailSubscriptionStatus(record)"
+                    >
+                      {{ record.is_active ? '停用' : '启用' }}
+                    </a-button>
+                    <a-button 
+                      size="small" 
+                      danger 
+                      @click="handleDeleteEmailSubscription(record)"
+                    >
+                      删除
+                    </a-button>
+                  </a-space>
+                </template>
+              </template>
+            </a-table>
+          </div>
+        </a-tab-pane>
+        
         <a-tab-pane key="info" tab="关于">
           <a-descriptions :column="1" bordered>
             <a-descriptions-item label="服务名称">
@@ -270,6 +326,25 @@
         </a-form-item>
       </a-form>
     </a-modal>
+    
+    <!-- 邮箱订阅编辑/创建模态框 -->
+    <a-modal
+      v-model:visible="emailSubscriptionModalVisible"
+      title="添加订阅邮箱"
+      @ok="handleSaveEmailSubscriptionModal"
+      :confirm-loading="savingEmailSubscription"
+      width="500px"
+    >
+      <a-form :model="emailSubscriptionForm" layout="vertical">
+        <a-form-item label="邮箱地址" required>
+          <a-input 
+            v-model:value="emailSubscriptionForm.email" 
+            placeholder="请输入邮箱地址"
+            type="email"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -306,6 +381,15 @@ import {
   type CreateAIMethodRequest,
   type UpdateAIMethodRequest
 } from '@/api/ai-method'
+import {
+  getAllEmailSubscriptions,
+  createEmailSubscription,
+  updateEmailSubscription,
+  deleteEmailSubscription,
+  type EmailSubscription as EmailSubscriptionType,
+  type EmailSubscriptionCreateRequest,
+  type EmailSubscriptionUpdateRequest
+} from '@/api/emailSubscription'
 
 const activeTab = ref('prompts')
 const saving = ref(false)
@@ -319,6 +403,38 @@ const currentPromptId = ref<number | null>(null)
 
 const prompts = ref<Prompt[]>([])
 const aiMethods = ref<(AIMethod & { method_type: string })[]>([])
+const emailSubscriptions = ref<EmailSubscriptionType[]>([])
+const loadingEmailSubscriptions = ref(false)
+const emailSubscriptionModalVisible = ref(false)
+const savingEmailSubscription = ref(false)
+const emailSubscriptionForm = ref({
+  email: ''
+})
+
+const emailSubscriptionColumns = [
+  {
+    title: '邮箱地址',
+    dataIndex: 'email',
+    key: 'email',
+  },
+  {
+    title: '状态',
+    dataIndex: 'is_active',
+    key: 'is_active',
+    width: 100,
+  },
+  {
+    title: '创建时间',
+    dataIndex: 'created_at',
+    key: 'created_at',
+    width: 180,
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 200,
+  },
+]
 
 const aiMethodColumns = [
   {
@@ -692,10 +808,100 @@ const handleDeleteAIMethod = (record: AIMethod) => {
   })
 }
 
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-CN')
+}
+
+const loadEmailSubscriptions = async () => {
+  loadingEmailSubscriptions.value = true
+  try {
+    const response = await getAllEmailSubscriptions()
+    if (response.success && response.data) {
+      emailSubscriptions.value = response.data
+    }
+  } catch (error: any) {
+    message.error(error.message || '加载邮箱订阅失败')
+  } finally {
+    loadingEmailSubscriptions.value = false
+  }
+}
+
+const showCreateEmailSubscriptionModal = () => {
+  emailSubscriptionForm.value = {
+    email: ''
+  }
+  emailSubscriptionModalVisible.value = true
+}
+
+const handleSaveEmailSubscriptionModal = async () => {
+  if (!emailSubscriptionForm.value.email.trim()) {
+    message.warning('请输入邮箱地址')
+    return
+  }
+  
+  // 简单的邮箱格式验证
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!emailRegex.test(emailSubscriptionForm.value.email)) {
+    message.warning('请输入有效的邮箱地址')
+    return
+  }
+  
+  savingEmailSubscription.value = true
+  try {
+    const data: EmailSubscriptionCreateRequest = {
+      email: emailSubscriptionForm.value.email,
+      is_active: true
+    }
+    await createEmailSubscription(data)
+    message.success('邮箱订阅已添加')
+    emailSubscriptionModalVisible.value = false
+    await loadEmailSubscriptions()
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || error.message || '添加失败')
+  } finally {
+    savingEmailSubscription.value = false
+  }
+}
+
+const toggleEmailSubscriptionStatus = async (record: EmailSubscriptionType) => {
+  try {
+    const data: EmailSubscriptionUpdateRequest = {
+      is_active: !record.is_active
+    }
+    await updateEmailSubscription(record.id, data)
+    message.success(record.is_active ? '已停用' : '已启用')
+    await loadEmailSubscriptions()
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || error.message || '操作失败')
+  }
+}
+
+const handleDeleteEmailSubscription = (record: EmailSubscriptionType) => {
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除邮箱订阅 "${record.email}" 吗？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await deleteEmailSubscription(record.id)
+        message.success('邮箱订阅已删除')
+        await loadEmailSubscriptions()
+      } catch (error: any) {
+        message.error(error.response?.data?.detail || error.message || '删除失败')
+      }
+    },
+  })
+}
+
 onMounted(() => {
   loadAIParams()
   loadPrompts()
   loadAIMethods()
+  loadEmailSubscriptions()
 })
 </script>
 

@@ -111,3 +111,15 @@ class SummaryReorderRequest(BaseModel):
     """重新排序总结请求"""
     summary_ids: List[int]
 
+
+# 邮箱订阅相关
+class EmailSubscriptionCreateRequest(BaseModel):
+    """创建邮箱订阅请求"""
+    email: str
+    is_active: Optional[bool] = True
+
+
+class EmailSubscriptionUpdateRequest(BaseModel):
+    """更新邮箱订阅请求"""
+    is_active: Optional[bool] = None
+

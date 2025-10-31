@@ -18,8 +18,8 @@ load_dotenv(env_path)
 
 from src.application import TikTokDownloader
 from ..utils import VideoProcessor, AudioExtractor, S3Client
-from ..services import TranscriptionService, AISummarizer
-from ..models import Task, TaskStatus, Video, VideoSummary
+from ..services import TranscriptionService, AISummarizer, EmailService
+from ..models import Task, TaskStatus, Video, VideoSummary, EmailSubscription
 from ..db import get_db_session
 from ..utils.task_queue import run_coro_blocking, run_io_blocking, submit_io_nonblocking, get_task_queue
 
@@ -47,6 +47,57 @@ class TaskWorker:
         except Exception as e:
             # 如果更新失败，打印错误但不抛出异常，避免中断任务处理
             print(f"Failed to update task {task_id} status: {str(e)}")
+    
+    def _send_email_notifications(self, task_id: int, video_id: str, summary: str, detail_dict: dict):
+        """发送邮件通知到所有激活的订阅邮箱"""
+        try:
+            # 获取所有激活的订阅邮箱
+            with get_db_session() as db:
+                subscriptions = db.query(EmailSubscription).filter(
+                    EmailSubscription.is_active == True
+                ).all()
+            
+            if not subscriptions:
+                print("没有激活的邮箱订阅，跳过邮件发送")
+                return
+            
+            # 构建视频信息字典
+            video_info = {
+                'video_id': video_id,
+                'platform': detail_dict.get('platform', 'douyin'),
+                'desc': detail_dict.get('desc', '无标题'),
+                'nickname': detail_dict.get('nickname', '未知'),
+                'url': detail_dict.get('share_url', ''),
+                'share_url': detail_dict.get('share_url', ''),
+                'digg_count': detail_dict.get('digg_count', 0),
+                'comment_count': detail_dict.get('comment_count', 0),
+                'share_count': detail_dict.get('share_count', 0),
+            }
+            
+            # 发送邮件到所有订阅邮箱
+            email_service = EmailService()
+            if not email_service.is_configured():
+                print("邮件服务未配置，跳过邮件发送")
+                return
+            
+            emails = [sub.email for sub in subscriptions]
+            print(f"准备向 {len(emails)} 个邮箱发送总结邮件")
+            
+            results = email_service.send_batch_summary_emails(
+                emails,
+                video_info,
+                summary
+            )
+            
+            # 统计发送结果
+            success_count = sum(1 for success in results.values() if success)
+            print(f"邮件发送完成: {success_count}/{len(emails)} 成功")
+            
+        except Exception as e:
+            # 邮件发送失败不应影响任务完成
+            print(f"发送邮件通知失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def process_task(self, task_id: int) -> bool:
         """处理单个任务 - 使用独立的数据库会话更新状态（同步）"""
@@ -268,6 +319,9 @@ class TaskWorker:
                         db.add(video_summary)
                         db.commit()
                         print(f"Created VideoSummary record for task {task_id} with name: {summary_name}")
+            
+            # 发送邮件通知（如果有订阅邮箱）
+            self._send_email_notifications(task_id, video_id, summary, detail_dict)
             
             # 更新完成状态
             self._update_task_status(task_id, TaskStatus.COMPLETED.value, 100,
