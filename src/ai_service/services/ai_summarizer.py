@@ -121,15 +121,6 @@ class AISummarizer:
             return None
         
         try:
-            # S3中的总结文件路径
-            s3_summary_path = f"videos/{video_id}_summary.txt"
-            
-            # 如果不强制重新生成，检查S3中是否已存在总结文件
-            if not force_regenerate and self.s3_client.file_exists(s3_summary_path):
-                print(f"S3中已存在总结文件，下载并读取: {s3_summary_path}")
-                summary = self._download_text_from_s3(s3_summary_path)
-                if summary:
-                    return summary
             
             # 本地临时总结文件
             temp_dir = Path(tempfile.gettempdir()) / "ai_service_downloads"
@@ -198,15 +189,6 @@ class AISummarizer:
             
             summary = response.choices[0].message.content.strip()
             print("AI总结完成")
-            
-            # 保存到本地临时文件
-            with open(summary_file, 'w', encoding='utf-8') as f:
-                f.write(summary)
-            
-            # 上传到S3
-            if self.s3_client.upload_file(str(summary_file), s3_summary_path):
-                print(f"总结文件已上传到S3: {s3_summary_path}")
-            
             return summary
             
         except Exception as e:
@@ -246,16 +228,6 @@ class AISummarizer:
                 print(f"未知的浏览器方法: {method_type}")
                 return None
             
-            # S3中的总结文件路径
-            s3_summary_path = f"videos/{video_id}_summary.txt"
-            
-            # 如果不强制重新生成，检查S3中是否已存在总结文件
-            if not force_regenerate and self.s3_client.file_exists(s3_summary_path):
-                print(f"S3中已存在总结文件，下载并读取: {s3_summary_path}")
-                summary = self._download_text_from_s3(s3_summary_path)
-                if summary:
-                    return summary
-            
             print(f"使用{method_type}浏览器方式总结...")
             
             # 由于async_playwright需要事件循环，但当前可能是从线程调用
@@ -279,19 +251,6 @@ class AISummarizer:
             
             if summary:
                 print(f"{method_type}总结完成")
-                
-                # 保存到本地临时文件
-                temp_dir = Path(tempfile.gettempdir()) / "ai_service_downloads"
-                temp_dir.mkdir(exist_ok=True)
-                summary_file = temp_dir / f"{video_id}_summary.txt"
-                
-                with open(summary_file, 'w', encoding='utf-8') as f:
-                    f.write(summary)
-                
-                # 上传到S3
-                if self.s3_client.upload_file(str(summary_file), s3_summary_path):
-                    print(f"总结文件已上传到S3: {s3_summary_path}")
-                
                 return summary
             else:
                 print(f"{method_type}总结失败")
