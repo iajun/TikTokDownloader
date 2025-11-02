@@ -108,7 +108,19 @@
           <!-- 语音转录 -->
           <a-collapse-panel key="transcription">
             <template #header>
-              <span class="collapse-header">📝 语音转录</span>
+              <div style="display: flex; align-items: center; width: 100%">
+                <span class="collapse-header">📝 语音转录</span>
+                <a-button
+                  v-if="record.audio_path && record.status === 'completed'"
+                  type="link"
+                  size="small"
+                  @click.stop="handleRetranscribe"
+                  :loading="retranscribeLoading"
+                  style="margin-left: auto"
+                >
+                  🔄 重新转录
+                </a-button>
+              </div>
             </template>
             <div class="content-box">
               <a-typography-paragraph
@@ -346,6 +358,7 @@ import html2canvas from "html2canvas";
 import {
   getHistoryDetail,
   resummarizeTask,
+  retranscribeTask,
   retryTask,
   refreshUrls,
   getTaskStatus,
@@ -365,6 +378,7 @@ const route = useRoute();
 
 const loading = ref(false);
 const retryLoading = ref(false);
+const retranscribeLoading = ref(false);
 const refreshingUrls = ref(false);
 const record = ref<Record | null>(null);
 const videoPlayer = ref<HTMLVideoElement | null>(null);
@@ -683,6 +697,34 @@ const loadPrompts = async () => {
   }
 };
 
+const handleRetranscribe = async () => {
+  if (!record.value) return;
+
+  retranscribeLoading.value = true;
+  try {
+    const recordId = parseInt(route.params.recordId as string);
+    const response = await retranscribeTask(recordId);
+
+    if (response.success) {
+      // 立即反馈状态并开始轮询
+      message.info("正在重新转录，请稍候...");
+      if (record.value) {
+        record.value.status = "transcribing";
+        record.value.progress = 60;
+      }
+      // 设置轮询标记并开始轮询
+      setPollingFlag(recordId, true);
+      startPolling(recordId);
+    } else {
+      message.error("重新转录失败");
+    }
+  } catch (error: any) {
+    message.error(error.response?.data?.detail || error.message || "操作失败");
+  } finally {
+    retranscribeLoading.value = false;
+  }
+};
+
 const handleResummarize = async () => {
   if (!record.value) return;
 
@@ -832,13 +874,17 @@ const startPolling = (recordId: number) => {
       const response = await getTaskStatus(recordId);
       if (response.success && response.data) {
         // 保留原有的 S3 预签名 URL，避免刷新
+        let previousStatus = "";
         if (record.value) {
+          previousStatus = record.value.status;
           const newStatus = response.data.status;
           const newSummary = response.data.summary;
+          const newTranscription = response.data.transcription;
 
-          // 只更新状态和总结内容
+          // 更新状态、总结内容和转录内容
           record.value.status = newStatus;
           record.value.summary = newSummary;
+          record.value.transcription = newTranscription;
           record.value.progress = response.data.progress;
 
           // 保留视频相关 URL，避免轮询时刷新影响视频播放
@@ -864,11 +910,23 @@ const startPolling = (recordId: number) => {
           setPollingFlag(recordId, false);
 
           if (response.data.status === "completed") {
-            message.success("总结生成完成");
-            // 重新加载总结列表
-            await loadSummaries();
+            // 根据之前的状态判断是总结还是转录完成
+            if (previousStatus === "transcribing") {
+              message.success("转录完成");
+              // 重新加载详情以获取最新的转录内容
+              await loadRecord();
+            } else {
+              message.success("总结生成完成");
+              // 重新加载总结列表
+              await loadSummaries();
+            }
           } else {
-            message.error("总结生成失败");
+            // 根据之前的状态判断失败类型
+            if (previousStatus === "transcribing") {
+              message.error("转录失败");
+            } else {
+              message.error("总结生成失败");
+            }
           }
         }
       }

@@ -196,6 +196,20 @@ export const resummarizeTask = (taskId: number, customPrompt?: string) => {
 }
 
 /**
+ * 重新转录音频
+ */
+export const retranscribeTask = (taskId: number, modelName?: string) => {
+  const params: any = {}
+  if (modelName) {
+    params.model_name = modelName
+  }
+  return api.post<RecordResponse>(`/v1/tasks/${taskId}/retranscribe`, {}, {
+    timeout: 60000,
+    params,
+  })
+}
+
+/**
  * 重新执行失败的任务
  */
 export const retryTask = (taskId: number) => {

@@ -10,10 +10,13 @@ import os
 
 from ..models import Task, TaskStatus, VideoSummary, EmailSubscription
 from ..db import get_db, get_db_session
-from ..services import AISummarizer, EmailService
+from ..services import AISummarizer, EmailService, TranscriptionService
 from .schemas import TaskCreateRequest, BatchTaskCreateRequest, ResummarizeRequest, BatchDeleteRequest
 from ..utils.task_queue import run_coro_blocking, run_io_blocking
+from ..utils import S3Client
 from .dependencies import _extract_video_urls, _delete_task_files
+import tempfile
+from pathlib import Path
 
 router = APIRouter()
 
@@ -518,6 +521,151 @@ def resummarize_task(
         return {
             "success": True,
             "message": "Summary regeneration started in background",
+            "data": task.to_dict(include_video=True)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _retranscribe_background_task_sync(task_id: int, model_name: Optional[str] = None):
+    """后台任务：重新转录音频（同步，内部使用进程池执行CPU密集型任务）"""
+    try:
+        # 第一步：获取任务信息和音频文件路径，并更新状态为 TRANSCRIBING
+        with get_db_session() as db:
+            task = db.query(Task).filter(Task.id == task_id).first()
+            
+            if not task:
+                print(f"Task {task_id} not found")
+                return
+            
+            # 检查是否有音频文件路径
+            if not task.audio_path:
+                print(f"No audio file available for task {task_id}")
+                return
+            
+            # 检查音频文件是否存在于S3
+            s3_client = S3Client()
+            if not s3_client.file_exists(task.audio_path):
+                print(f"Audio file not found in S3: {task.audio_path}")
+                return
+            
+            # 更新状态为 TRANSCRIBING
+            task.status = TaskStatus.TRANSCRIBING.value
+            task.progress = 60
+            
+            # 保存关键信息到局部变量（避免会话绑定问题）
+            audio_path_s3 = task.audio_path
+            video_id = task.video_id
+        
+        print(f"Starting to retranscribe task {task_id}")
+        
+        # 第二步：从S3下载音频文件到本地临时文件
+        temp_dir = Path(tempfile.gettempdir()) / "ai_service_downloads"
+        temp_dir.mkdir(exist_ok=True)
+        local_audio_path = temp_dir / f"{video_id}_retranscribe_audio.wav"
+        
+        if not s3_client.download_file(audio_path_s3, str(local_audio_path)):
+            print(f"Failed to download audio file from S3: {audio_path_s3}")
+            return
+        
+        try:
+            # 第三步：执行转录（在CPU进程池中执行，避免阻塞主线程）
+            transcription_service = TranscriptionService(model_name or "large-v3-turbo")
+            transcription = transcription_service.transcribe(str(local_audio_path), video_id)
+            
+            if not transcription:
+                print(f"Failed to transcribe audio for task {task_id}")
+                return
+            
+            # 第四步：更新任务状态为完成，更新转录内容
+            with get_db_session() as db:
+                task = db.query(Task).filter(Task.id == task_id).first()
+                if task:
+                    # 更新转录内容
+                    task.transcription = transcription
+                    task.transcription_path = f"videos/{video_id}_transcription.txt"
+                    task.status = TaskStatus.COMPLETED.value
+                    task.progress = 100
+                    task.updated_at = datetime.utcnow()
+                    db.commit()
+                    print(f"Transcription regenerated successfully for task {task_id}")
+                    
+                    # 可选：上传转录文本到S3（如果需要）
+                    try:
+                        s3_client.upload_from_memory(
+                            transcription.encode('utf-8'),
+                            task.transcription_path,
+                            content_type="text/plain; charset=utf-8"
+                        )
+                    except Exception as e:
+                        print(f"Failed to upload transcription to S3: {e}")
+        
+        finally:
+            # 清理临时文件
+            try:
+                if local_audio_path.exists():
+                    local_audio_path.unlink()
+            except Exception as e:
+                print(f"Failed to clean up temporary audio file: {e}")
+                
+    except Exception as e:
+        print(f"Error retranscribing task {task_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # 更新状态为失败
+        with get_db_session() as db:
+            task = db.query(Task).filter(Task.id == task_id).first()
+            if task:
+                task.status = TaskStatus.FAILED.value
+                task.progress = 100
+                task.error_message = str(e)
+                task.updated_at = datetime.utcnow()
+                db.commit()
+
+
+@router.post("/tasks/{task_id}/retranscribe")
+def retranscribe_task(
+    task_id: int,
+    background_tasks: BackgroundTasks,
+    model_name: Optional[str] = Query(None, description="可选的Whisper模型名称（默认: large-v3-turbo）"),
+    db: Session = Depends(get_db)
+):
+    """
+    重新转录音频（异步后台处理）
+    
+    Args:
+        task_id: 任务ID
+        background_tasks: FastAPI 后台任务
+        model_name: 可选的Whisper模型名称（默认: large-v3-turbo）
+    """
+    try:
+        task = db.query(Task).filter(Task.id == task_id).first()
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # 检查任务是否已完成
+        if task.status != TaskStatus.COMPLETED.value:
+            raise HTTPException(status_code=400, detail="Task is not completed yet")
+        
+        # 检查是否有音频文件
+        if not task.audio_path:
+            raise HTTPException(status_code=400, detail="No audio file available")
+        
+        # 检查音频文件是否存在于S3
+        s3_client = S3Client()
+        if not s3_client.file_exists(task.audio_path):
+            raise HTTPException(status_code=404, detail="Audio file not found in S3")
+        
+        # 创建后台任务（不等待完成）
+        background_tasks.add_task(_retranscribe_background_task_sync, task_id, model_name)
+        
+        return {
+            "success": True,
+            "message": "Transcription regeneration started in background",
             "data": task.to_dict(include_video=True)
         }
         
