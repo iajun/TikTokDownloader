@@ -223,6 +223,24 @@
                     取消
                   </a-button>
                   <a-divider type="vertical" />
+                  <a-button
+                    v-if="editingSummaryId !== summary.id"
+                    type="text"
+                    size="small"
+                    @click="copySummaryAsMarkdown(summary)"
+                  >
+                    📄 复制为 Markdown
+                  </a-button>
+                  <a-button
+                    v-if="editingSummaryId !== summary.id"
+                    type="text"
+                    size="small"
+                    @click="copySummaryAsImage(summary)"
+                    :loading="copyingImage"
+                  >
+                    📱 复制为长图片
+                  </a-button>
+                  <a-divider type="vertical" />
                   <a-popconfirm
                     title="确定要删除这个总结吗？"
                     @confirm="handleDeleteSummary(summary.id)"
@@ -237,7 +255,7 @@
                   </a-popconfirm>
                 </a-space>
               </div>
-              <div class="summary-content">
+              <div class="summary-content" :ref="el => setSummaryContentRef(el, summary.id)">
                 <template v-if="editingSummaryId === summary.id">
                   <a-textarea
                     v-model:value="editingContent"
@@ -321,8 +339,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
-import { message } from "ant-design-vue";
+import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
+import { message, Modal } from "ant-design-vue";
+// @ts-ignore - html2canvas types may not be available until package is installed
+import html2canvas from "html2canvas";
 import {
   getHistoryDetail,
   resummarizeTask,
@@ -380,6 +400,19 @@ const promptOptions = computed(() => {
 const editingSummaryId = ref<number | null>(null);
 const editingContent = ref<string>("");
 const savingSummary = ref(false);
+
+// 复制相关
+const copyingImage = ref(false);
+const summaryContentRefs = ref<Map<number, HTMLElement>>(new Map());
+
+// 设置总结内容 ref
+const setSummaryContentRef = (el: any, summaryId: number) => {
+  if (el && el instanceof HTMLElement) {
+    summaryContentRefs.value.set(summaryId, el);
+  } else {
+    summaryContentRefs.value.delete(summaryId);
+  }
+};
 
 const startEditSummary = (summary: VideoSummary) => {
   editingSummaryId.value = summary.id;
@@ -900,7 +933,21 @@ const handleTabChange = (key: string) => {
 const handleTabEdit = (targetKey: string, action: 'add' | 'remove') => {
   if (action === 'remove') {
     const summaryId = parseInt(targetKey);
-    handleDeleteSummary(summaryId);
+    // 查找要删除的总结信息用于提示
+    const summaryToDelete = summaries.value.find(s => s.id === summaryId);
+    const summaryName = summaryToDelete ? summaryToDelete.name : '这个总结';
+    
+    // 二次确认
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定要删除"${summaryName}"吗？此操作不可恢复。`,
+      okText: '确定删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        handleDeleteSummary(summaryId);
+      },
+    });
   }
 };
 
@@ -958,6 +1005,145 @@ const handleDeleteSummary = async (summaryId: number) => {
     }
   } catch (error: any) {
     message.error(error.response?.data?.detail || error.message || "操作失败");
+  }
+};
+
+// 复制总结为 Markdown
+const copySummaryAsMarkdown = async (summary: VideoSummary) => {
+  try {
+    const markdown = summary.content || "";
+    if (!markdown.trim()) {
+      message.warning("总结内容为空");
+      return;
+    }
+    
+    await navigator.clipboard.writeText(markdown);
+    message.success("Markdown 已复制到剪切板");
+  } catch (error: any) {
+    message.error("复制失败：" + (error.message || "未知错误"));
+  }
+};
+
+// 复制总结为长图片（手机长图）
+const copySummaryAsImage = async (summary: VideoSummary) => {
+  const contentElement = summaryContentRefs.value.get(summary.id);
+  if (!contentElement) {
+    message.error("未找到总结内容");
+    return;
+  }
+
+  copyingImage.value = true;
+  try {
+    // 等待 DOM 更新完成
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 100)); // 等待渲染完成
+
+    // 获取元素的样式信息
+    const styles = window.getComputedStyle(contentElement);
+    
+    // 手机端宽度（375px 是常见的手机屏幕宽度）
+    const mobileWidth = 425;
+    
+    // 克隆元素以避免修改原始元素
+    const clone = contentElement.cloneNode(true) as HTMLElement;
+    
+    // 创建一个临时的容器用于渲染
+    const tempContainer = document.createElement('div');
+    tempContainer.style.cssText = `
+      position: fixed;
+      left: -9999px;
+      top: 0;
+      width: ${mobileWidth}px;
+      background: ${styles.backgroundColor || '#ffffff'};
+      font-family: ${styles.fontFamily || 'system-ui, -apple-system, sans-serif'};
+      font-size: ${styles.fontSize || '16px'};
+      line-height: ${styles.lineHeight || '1.6'};
+      color: ${styles.color || '#333333'};
+      padding: ${styles.padding || '20px'};
+      box-sizing: border-box;
+      overflow: visible;
+    `;
+    
+    // 设置克隆元素的样式
+    clone.style.cssText = `
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+    `;
+    
+    // 为临时容器添加 ID 以便在 onclone 中查找
+    const cloneId = `temp-${Date.now()}`;
+    tempContainer.setAttribute('data-clone-id', cloneId);
+    
+    tempContainer.appendChild(clone);
+    document.body.appendChild(tempContainer);
+    
+    // 等待渲染完成
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // 使用 html2canvas 将 DOM 转换为 canvas
+    const canvas = await html2canvas(tempContainer, {
+      width: mobileWidth,
+      height: tempContainer.scrollHeight,
+      scale: 2, // 2x 用于更好的清晰度
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      onclone: (clonedDoc: Document) => {
+        // 确保克隆的文档中所有图片都已加载
+        const clonedContainer = clonedDoc.querySelector(`[data-clone-id="${cloneId}"]`);
+        if (clonedContainer) {
+          const images = clonedContainer.querySelectorAll('img');
+          return Promise.all(
+            Array.from(images).map((img) => {
+              return new Promise<void>((resolve) => {
+                if ((img as HTMLImageElement).complete) {
+                  resolve();
+                } else {
+                  (img as HTMLImageElement).onload = () => resolve();
+                  (img as HTMLImageElement).onerror = () => resolve();
+                }
+              });
+            })
+          );
+        }
+      }
+    });
+    
+    // 转换为 blob 并复制到剪切板
+    canvas.toBlob((blob: Blob | null) => {
+      // 清理临时容器
+      if (document.body.contains(tempContainer)) {
+        document.body.removeChild(tempContainer);
+      }
+      if (!blob) {
+        message.error('无法创建图片');
+        return;
+      }
+      
+      navigator.clipboard.write([
+        new ClipboardItem({
+          'image/png': blob
+        })
+      ]).then(() => {
+        message.success("长图片已复制到剪切板");
+      }).catch((error: any) => {
+        console.error('Failed to copy image:', error);
+        message.error("复制失败：" + (error.message || "未知错误"));
+      });
+    }, 'image/png', 0.95);
+    
+  } catch (error: any) {
+    console.error('Failed to copy summary as image:', error);
+    message.error("复制失败：" + (error.message || "未知错误"));
+  } finally {
+    copyingImage.value = false;
   }
 };
 
@@ -1216,6 +1402,11 @@ onMounted(() => {
 /* 总结tabs样式 */
 .summary-tabs {
   margin-top: 16px;
+}
+
+.summary-content {
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .summary-tab-content {

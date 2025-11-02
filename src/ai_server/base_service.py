@@ -101,6 +101,8 @@ class BaseAIService(ABC):
             await self.page.goto(self.chat_url, wait_until='networkidle')
             await asyncio.sleep(3)
             await self._check_login_status()
+
+            await self._init_page()
             
             if not (input_element := await self._find_input_element()):
                 return None
@@ -140,6 +142,10 @@ class BaseAIService(ABC):
     @abstractmethod
     def _get_wait_success_selector(self) -> Optional[str]:
         """获取等待成功的选择器"""
+        pass
+    
+    async def _init_page(self):
+        """初始化页面"""
         pass
     
     def _get_content_selectors(self) -> Optional[list[str]]:

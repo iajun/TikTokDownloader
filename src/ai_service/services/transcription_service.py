@@ -23,14 +23,14 @@ def _cpu_whisper_transcribe(audio_path: str, model_name: str) -> str:
     if model is None:
         model = whisper.load_model(model_name)
         _CPU_MODELS[model_name] = model
-    result = model.transcribe(audio_path, language="zh", initial_prompt="语音转文本，请在合适位置断句、分段，每段不要超过100字，并根据语言类别加上中文或英文标点标号。")
+    result = model.transcribe(audio_path, language="zh", initial_prompt="")
     return result.get("text", "").strip()
 
 
 class TranscriptionService:
     """语音转文字服务"""
     
-    def __init__(self, model_name: str = "base"):
+    def __init__(self, model_name: str = "large-v3-turbo"):
         """初始化语音转文字服务"""
         self.whisper_model = None
         self.model_name = model_name

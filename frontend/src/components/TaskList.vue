@@ -314,11 +314,7 @@ const getStatusText = (status: string) => {
 }
 
 const viewTask = (task: TaskStatus) => {
-  if (task.status === 'completed') {
-    router.push(`/detail/${task.id}`)
-  } else {
-    message.info(`任务状态: ${getStatusText(task.status)}, 进度: ${task.progress}%`)
-  }
+  router.push(`/detail/${task.id}`)
 }
 
 const retryTask = async (task: TaskStatus) => {

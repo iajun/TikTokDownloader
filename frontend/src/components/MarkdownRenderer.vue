@@ -15,6 +15,7 @@
         <span class="zoom-text">{{ Math.round(modalZoom * 100) }}%</span>
         <a-button size="small" @click="zoomIn">+</a-button>
         <a-button size="small" @click="resetZoom" style="margin-left: 8px">重置</a-button>
+        <a-button size="small" @click="copyMermaidToClipboard" style="margin-left: 8px" type="primary">📋 复制图片</a-button>
       </div>
       <div class="mermaid-modal-body">
         <div class="mermaid-modal-canvas" :style="{ transform: `scale(${modalZoom})` }" ref="mermaidModalContainer" v-html="modalSvg"></div>
@@ -28,6 +29,7 @@ import { ref, watch, nextTick, onMounted } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import mermaid from 'mermaid'
+import { message } from 'ant-design-vue'
 
 interface Props {
   content: string
@@ -47,6 +49,210 @@ const mermaidModalContainer = ref<HTMLElement | null>(null)
 const zoomIn = () => { modalZoom.value = Math.min(3, +(modalZoom.value + 0.1).toFixed(2)) }
 const zoomOut = () => { modalZoom.value = Math.max(0.2, +(modalZoom.value - 0.1).toFixed(2)) }
 const resetZoom = () => { modalZoom.value = 1 }
+
+// 复制 Mermaid 图表到剪切板
+const copyMermaidToClipboard = async () => {
+  if (!mermaidModalContainer.value) return
+  
+  try {
+    const svgElement = mermaidModalContainer.value.querySelector('svg')
+    if (!svgElement) {
+      console.error('No SVG element found')
+      return
+    }
+    
+    // 克隆 SVG 元素以避免修改原始元素
+    const svgClone = svgElement.cloneNode(true) as SVGElement
+    
+    // 获取 SVG 的实际尺寸（优先使用 viewBox，否则使用 width/height 属性，最后使用 getBoundingClientRect）
+    let width: number
+    let height: number
+    
+    const viewBox = svgElement.getAttribute('viewBox')
+    if (viewBox) {
+      const parts = viewBox.split(/\s+/)
+      if (parts.length >= 4) {
+        width = parseFloat(parts[2]) || 800
+        height = parseFloat(parts[3]) || 600
+      } else {
+        const bbox = svgElement.getBoundingClientRect()
+        width = bbox.width || 800
+        height = bbox.height || 600
+      }
+    } else {
+      width = parseFloat(svgElement.getAttribute('width') || '0') || 
+              svgElement.getBoundingClientRect().width || 800
+      height = parseFloat(svgElement.getAttribute('height') || '0') || 
+               svgElement.getBoundingClientRect().height || 600
+    }
+    
+    // 确保尺寸合理（至少 100px）
+    width = Math.max(width, 100)
+    height = Math.max(height, 100)
+    
+    // 创建一个 canvas 元素
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    
+    if (!ctx) {
+      console.error('Failed to get canvas context')
+      return
+    }
+    
+    // 设置白色背景
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+    
+    // 将 SVG 转为 data URI（避免跨域污染问题）
+    // 确保 SVG 有正确的 width 和 height 属性
+    svgClone.setAttribute('width', width.toString())
+    svgClone.setAttribute('height', height.toString())
+    const svgWithSize = new XMLSerializer().serializeToString(svgClone)
+    const svgDataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgWithSize)
+    
+    const img = new Image()
+    // 对于 data URI，不需要设置 crossOrigin
+    
+    await new Promise((resolve, reject) => {
+      img.onload = () => {
+        try {
+          // 绘制图片到 canvas
+          ctx.drawImage(img, 0, 0, width, height)
+          
+          // 将 canvas 转为 blob
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error('Failed to create blob'))
+              return
+            }
+            
+            // 使用 Clipboard API 复制图片
+            navigator.clipboard.write([
+              new ClipboardItem({
+                'image/png': blob
+              })
+            ]).then(() => {
+              message.success('图片已复制到剪切板')
+              resolve(true)
+            }).catch(reject)
+          }, 'image/png')
+        } catch (error) {
+          reject(error)
+        }
+      }
+      img.onerror = () => {
+        reject(new Error('Failed to load SVG image'))
+      }
+      img.src = svgDataUri
+    })
+  } catch (error) {
+    console.error('Failed to copy Mermaid chart:', error)
+    message.error('复制失败：' + (error instanceof Error ? error.message : String(error)))
+  }
+}
+
+// 复制 Mermaid 图表到剪切板（从容器元素复制）
+const copyMermaidChartToClipboard = async (container: HTMLElement) => {
+  try {
+    const svgElement = container.querySelector('svg')
+    if (!svgElement) {
+      message.error('未找到图表')
+      return
+    }
+    
+    // 克隆 SVG 元素以避免修改原始元素
+    const svgClone = svgElement.cloneNode(true) as SVGElement
+    
+    // 获取 SVG 的实际尺寸（优先使用 viewBox，否则使用 width/height 属性，最后使用 getBoundingClientRect）
+    let width: number
+    let height: number
+    
+    const viewBox = svgElement.getAttribute('viewBox')
+    if (viewBox) {
+      const parts = viewBox.split(/\s+/)
+      if (parts.length >= 4) {
+        width = parseFloat(parts[2]) || 800
+        height = parseFloat(parts[3]) || 600
+      } else {
+        const bbox = svgElement.getBoundingClientRect()
+        width = bbox.width || 800
+        height = bbox.height || 600
+      }
+    } else {
+      width = parseFloat(svgElement.getAttribute('width') || '0') || 
+              svgElement.getBoundingClientRect().width || 800
+      height = parseFloat(svgElement.getAttribute('height') || '0') || 
+               svgElement.getBoundingClientRect().height || 600
+    }
+    
+    // 确保尺寸合理（至少 100px）
+    width = Math.max(width, 100)
+    height = Math.max(height, 100)
+    
+    // 创建一个 canvas 元素
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    
+    if (!ctx) {
+      message.error('无法创建画布')
+      return
+    }
+    
+    // 设置白色背景
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+    
+    // 将 SVG 转为 data URI（避免跨域污染问题）
+    // 确保 SVG 有正确的 width 和 height 属性
+    svgClone.setAttribute('width', width.toString())
+    svgClone.setAttribute('height', height.toString())
+    const svgWithSize = new XMLSerializer().serializeToString(svgClone)
+    const svgDataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgWithSize)
+    
+    const img = new Image()
+    // 对于 data URI，不需要设置 crossOrigin
+    
+    await new Promise((resolve, reject) => {
+      img.onload = () => {
+        try {
+          // 绘制图片到 canvas
+          ctx.drawImage(img, 0, 0, width, height)
+          
+          // 将 canvas 转为 blob
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error('Failed to create blob'))
+              return
+            }
+            
+            // 使用 Clipboard API 复制图片
+            navigator.clipboard.write([
+              new ClipboardItem({
+                'image/png': blob
+              })
+            ]).then(() => {
+              message.success('图片已复制到剪切板')
+              resolve(true)
+            }).catch(reject)
+          }, 'image/png')
+        } catch (error) {
+          reject(error)
+        }
+      }
+      img.onerror = () => {
+        reject(new Error('Failed to load SVG image'))
+      }
+      img.src = svgDataUri
+    })
+  } catch (error) {
+    console.error('Failed to copy Mermaid chart:', error)
+    message.error('复制失败：' + (error instanceof Error ? error.message : String(error)))
+  }
+}
 
 // 初始化 mermaid
 onMounted(() => {
@@ -88,11 +294,41 @@ const renderMermaid = async () => {
       const id = 'mermaid-' + Math.random().toString(36).substring(7)
       const container = document.createElement('div')
       container.className = 'mermaid-container'
-      container.title = '点击放大查看'
-      container.addEventListener('click', () => {
+      container.title = '点击放大查看，右键可复制图片'
+      
+      // 创建操作按钮容器
+      const actionBar = document.createElement('div')
+      actionBar.className = 'mermaid-action-bar'
+      
+      const copyBtn = document.createElement('button')
+      copyBtn.className = 'mermaid-copy-btn'
+      copyBtn.innerHTML = '📋 复制图片'
+      copyBtn.title = '复制图片到剪切板'
+      copyBtn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        await copyMermaidChartToClipboard(container)
+      })
+      
+      const zoomBtn = document.createElement('button')
+      zoomBtn.className = 'mermaid-zoom-btn'
+      zoomBtn.innerHTML = '🔍 放大查看'
+      zoomBtn.title = '点击放大查看'
+      zoomBtn.addEventListener('click', () => {
         modalSvg.value = container.innerHTML
         showMermaidModal.value = true
         modalZoom.value = 1
+      })
+      
+      actionBar.appendChild(copyBtn)
+      actionBar.appendChild(zoomBtn)
+      
+      container.addEventListener('click', (e) => {
+        // 如果点击的不是按钮，才触发放大
+        if (!actionBar.contains(e.target as Node)) {
+          modalSvg.value = container.innerHTML
+          showMermaidModal.value = true
+          modalZoom.value = 1
+        }
       })
       
       try {
@@ -101,6 +337,9 @@ const renderMermaid = async () => {
         // result 可能是一个包含 svg 属性的对象，或者直接是 svg 字符串
         const svgContent = typeof result === 'string' ? result : result.svg
         container.innerHTML = svgContent
+        
+        // 在 SVG 渲染后添加操作按钮
+        container.appendChild(actionBar)
         
         // 替换原始代码块
         if (codeBlock.parentElement) {
@@ -350,6 +589,45 @@ watch(() => props.content, async (newContent) => {
   padding: 20px;
   overflow: auto;
   cursor: zoom-in;
+  position: relative;
+}
+
+/* Mermaid 操作按钮栏 */
+.markdown-content :deep(.mermaid-action-bar) {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.markdown-content :deep(.mermaid-copy-btn),
+.markdown-content :deep(.mermaid-zoom-btn) {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.markdown-content :deep(.mermaid-copy-btn:hover),
+.markdown-content :deep(.mermaid-zoom-btn:hover) {
+  background: #f0f0f0;
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.markdown-content :deep(.mermaid-copy-btn:active),
+.markdown-content :deep(.mermaid-zoom-btn:active) {
+  background: #e6f7ff;
 }
 
 .markdown-content :deep(.mermaid-container svg) {

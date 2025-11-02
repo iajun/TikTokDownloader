@@ -40,16 +40,6 @@ class AudioExtractor:
             音频文件本地路径
         """
         try:
-            # S3中的音频路径
-            s3_audio_path = f"videos/{video_id}_audio.wav"
-            
-            # 检查S3中是否已存在音频文件
-            if not force_extract and self.s3_client.file_exists(s3_audio_path):
-                print(f"S3中已存在音频文件，下载到临时目录: {s3_audio_path}")
-                local_audio_path = self._download_from_s3_to_temp(s3_audio_path, video_id)
-                if local_audio_path:
-                    return local_audio_path
-            
             # 本地临时音频文件
             temp_dir = Path(tempfile.gettempdir()) / "ai_service_downloads"
             temp_dir.mkdir(exist_ok=True)
@@ -73,43 +63,15 @@ class AudioExtractor:
             
             print(f"音频提取成功: {audio_path}")
             
-            # 上传到S3
-            if run_io_blocking(self.s3_client.upload_file, str(audio_path), s3_audio_path):
-                print(f"音频已上传到S3: {s3_audio_path}")
-            
             return str(audio_path)
             
         except Exception as e:
             print(f"音频提取失败: {str(e)}")
             return None
     
-    def _download_from_s3_to_temp(self, s3_path: str, video_id: str) -> Optional[str]:
-        """从S3下载音频文件到临时目录"""
-        import tempfile
-        
-        temp_dir = Path(tempfile.gettempdir()) / "ai_service_downloads"
-        temp_dir.mkdir(exist_ok=True)
-        
-        local_path = temp_dir / f"{video_id}_audio.wav"
-        
-        if run_io_blocking(self.s3_client.download_file, s3_path, str(local_path)):
-            return str(local_path)
-        else:
-            return None
-
     async def extract_audio_async(self, video_path: str, video_id: str, force_extract: bool = False) -> Optional[str]:
         """异步版本：在共享 IO 线程池中执行阻塞步骤，避免阻塞事件循环。"""
         try:
-            s3_audio_path = f"videos/{video_id}_audio.wav"
-            
-            # S3 命中则直接下载
-            exists = await run_io_bound(self.s3_client.file_exists, s3_audio_path)
-            if not force_extract and exists:
-                print(f"S3中已存在音频文件，下载到临时目录: {s3_audio_path}")
-                local_audio_path = await self._download_from_s3_to_temp_async(s3_audio_path, video_id)
-                if local_audio_path:
-                    return local_audio_path
-            
             temp_dir = Path(tempfile.gettempdir()) / "ai_service_downloads"
             temp_dir.mkdir(exist_ok=True)
             audio_path = temp_dir / f"{video_id}_audio.wav"
@@ -129,22 +91,10 @@ class AudioExtractor:
                 return None
             
             print(f"音频提取成功: {audio_path}")
-            uploaded = await run_io_bound(self.s3_client.upload_file, str(audio_path), s3_audio_path)
-            if uploaded:
-                print(f"音频已上传到S3: {s3_audio_path}")
             return str(audio_path)
         except Exception as e:
             print(f"音频提取失败: {str(e)}")
             return None
 
-    async def _download_from_s3_to_temp_async(self, s3_path: str, video_id: str) -> Optional[str]:
-        """异步：从S3下载音频文件到临时目录"""
-        try:
-            temp_dir = Path(tempfile.gettempdir()) / "ai_service_downloads"
-            temp_dir.mkdir(exist_ok=True)
-            local_path = temp_dir / f"{video_id}_audio.wav"
-            ok = await run_io_bound(self.s3_client.download_file, s3_path, str(local_path))
-            return str(local_path) if ok else None
-        except Exception:
-            return None
+
 

@@ -18,6 +18,10 @@ class YuanBaoService(BaseAIService):
     
     def _get_input_selectors(self) -> list[str]:
         return ['.chat-input-editor > .ql-editor']
+
+    async def _init_page(self):
+        if button := await self.page.query_selector('div[dt-button-id="deep_think"]'):
+            await button.click()
     
     def _get_submit_selectors(self) -> list[str]:
         return ['#yuanbao-send-btn']
