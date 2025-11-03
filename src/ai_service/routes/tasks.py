@@ -8,9 +8,9 @@ from typing import Optional
 from datetime import datetime
 import os
 
-from ..models import Task, TaskStatus, VideoSummary
+from ..models import Task, TaskStatus, VideoSummary, EmailSubscription
 from ..db import get_db, get_db_session
-from ..services import AISummarizer
+from ..services import AISummarizer, EmailService
 from .schemas import TaskCreateRequest, BatchTaskCreateRequest, ResummarizeRequest, BatchDeleteRequest
 from ..utils.task_queue import run_coro_blocking, run_io_blocking
 from .dependencies import _extract_video_urls, _delete_task_files
@@ -550,4 +550,84 @@ def refresh_urls(task_id: int, db: Session = Depends(get_db)):
         "success": True,
         "data": task_dict
     }
+
+
+@router.post("/tasks/{task_id}/send-email")
+def send_task_email(task_id: int, db: Session = Depends(get_db)):
+    """
+    发送任务邮件到所有激活的订阅邮箱
+    
+    Args:
+        task_id: 任务ID
+    """
+    try:
+        task = db.query(Task).filter(Task.id == task_id).first()
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # 检查任务是否已完成且有总结
+        if task.status != TaskStatus.COMPLETED.value:
+            raise HTTPException(status_code=400, detail="Task is not completed yet")
+        
+        if not task.summary:
+            raise HTTPException(status_code=400, detail="Task has no summary available")
+        
+        # 检查邮件服务是否配置
+        email_service = EmailService()
+        if not email_service.is_configured():
+            raise HTTPException(status_code=500, detail="Email service is not configured")
+        
+        # 获取所有激活的订阅邮箱
+        emails = []
+        with get_db_session() as session:
+            subscriptions = session.query(EmailSubscription).filter(
+                EmailSubscription.is_active == True
+            ).all()
+            # 在会话内提取所有邮件地址，避免会话关闭后访问属性
+            emails = [sub.email for sub in subscriptions]
+        
+        if not emails:
+            raise HTTPException(status_code=400, detail="No active email subscriptions found")
+        
+        # 构建视频信息字典
+        video_info = {
+            'video_id': task.video_id or 'unknown',
+            'platform': task.platform or 'douyin',
+            'desc': task.video.desc if task.video and task.video.desc else '无标题',
+            'nickname': task.video.nickname if task.video and task.video.nickname else '未知',
+            'url': task.url,
+            'share_url': task.video.share_url if task.video and task.video.share_url else task.url,
+            'digg_count': task.video.digg_count if task.video and task.video.digg_count else 0,
+            'comment_count': task.video.comment_count if task.video and task.video.comment_count else 0,
+            'share_count': task.video.share_count if task.video and task.video.share_count else 0,
+        }
+        
+        # 发送邮件到所有订阅邮箱
+        results = email_service.send_batch_summary_emails(
+            emails,
+            video_info,
+            task.summary
+        )
+        
+        # 统计发送结果
+        success_count = sum(1 for success in results.values() if success)
+        failed_count = len(results) - success_count
+        
+        return {
+            "success": True,
+            "message": f"Email sent to {success_count} subscriber(s)",
+            "data": {
+                "task_id": task_id,
+                "total_emails": len(emails),
+                "success_count": success_count,
+                "failed_count": failed_count,
+                "results": results
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 

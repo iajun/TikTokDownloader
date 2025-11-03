@@ -39,6 +39,11 @@ class EmailService:
         self.smtp_password = os.getenv("SMTP_PASSWORD", "")
         self.from_email = os.getenv("SMTP_FROM_EMAIL", self.smtp_user)
         self.from_name = os.getenv("SMTP_FROM_NAME", "TikTok下载器")
+        # SSL模式：如果端口是465，使用SSL；如果端口是587，使用STARTTLS
+        self.use_ssl = os.getenv("SMTP_USE_SSL", "").lower() in ("true", "1", "yes")
+        # 如果未指定SSL模式，根据端口自动判断
+        if not os.getenv("SMTP_USE_SSL"):
+            self.use_ssl = (self.smtp_port == 465)
         
     def is_configured(self) -> bool:
         """检查邮件服务是否已配置"""
@@ -227,13 +232,95 @@ class EmailService:
             msg.attach(summary_attachment)
             
             # 发送邮件
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()  # 启用TLS加密
+            # 根据端口和配置选择连接方式
+            server = None
+            connection_success = False
+            try:
+                if self.use_ssl:
+                    # 使用SSL连接（通常用于端口465）
+                    print(f"尝试使用SSL连接到 {self.smtp_host}:{self.smtp_port}")
+                    server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=30)
+                else:
+                    # 使用普通SMTP连接，然后启用STARTTLS（通常用于端口587）
+                    print(f"尝试连接到 {self.smtp_host}:{self.smtp_port}")
+                    server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=30)
+                    print(f"启用STARTTLS...")
+                    server.starttls()  # 启用TLS加密
+                    print(f"STARTTLS成功")
+                
+                # 登录
+                print(f"尝试登录到SMTP服务器...")
                 server.login(self.smtp_user, self.smtp_password)
+                print(f"登录成功")
+                
+                # 发送邮件
+                print(f"发送邮件到 {to_email}...")
                 server.send_message(msg)
-            
-            print(f"邮件已成功发送到 {to_email}")
-            return True
+                print(f"邮件已成功发送到 {to_email}")
+                
+                # 正常关闭连接
+                server.quit()
+                connection_success = True
+                return True
+                
+            except smtplib.SMTPConnectError as e:
+                print(f"连接SMTP服务器失败: {str(e)}")
+                # 如果使用STARTTLS失败且未使用SSL，尝试使用SSL
+                if not self.use_ssl:
+                    print(f"STARTTLS连接失败，尝试使用SSL连接...")
+                    try:
+                        if server:
+                            try:
+                                server.quit()
+                            except:
+                                pass
+                        server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=30)
+                        server.login(self.smtp_user, self.smtp_password)
+                        server.send_message(msg)
+                        server.quit()
+                        print(f"邮件已成功发送到 {to_email}（使用SSL）")
+                        return True
+                    except Exception as e2:
+                        print(f"SSL连接也失败: {str(e2)}")
+                        raise e
+                raise
+            except smtplib.SMTPAuthenticationError as e:
+                print(f"SMTP认证失败: {str(e)}")
+                raise
+            except smtplib.SMTPServerDisconnected as e:
+                print(f"SMTP服务器连接断开: {str(e)}")
+                # 如果使用STARTTLS失败，尝试使用SSL
+                if not self.use_ssl:
+                    print(f"STARTTLS连接断开，尝试使用SSL连接...")
+                    try:
+                        if server:
+                            try:
+                                server.quit()
+                            except:
+                                pass
+                        server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=30)
+                        server.login(self.smtp_user, self.smtp_password)
+                        server.send_message(msg)
+                        server.quit()
+                        print(f"邮件已成功发送到 {to_email}（使用SSL）")
+                        return True
+                    except Exception as e2:
+                        print(f"SSL连接也失败: {str(e2)}")
+                        raise e
+                raise
+            except Exception as e:
+                print(f"发送邮件时发生错误: {str(e)}")
+                raise
+            finally:
+                # 确保关闭连接
+                if server and not connection_success:
+                    try:
+                        server.quit()
+                    except:
+                        try:
+                            server.close()
+                        except:
+                            pass
             
         except Exception as e:
             print(f"发送邮件失败: {str(e)}")

@@ -51,13 +51,16 @@ class TaskWorker:
     def _send_email_notifications(self, task_id: int, video_id: str, summary: str, detail_dict: dict):
         """发送邮件通知到所有激活的订阅邮箱"""
         try:
-            # 获取所有激活的订阅邮箱
+            # 获取所有激活的订阅邮箱，并在会话内提取邮件地址
+            emails = []
             with get_db_session() as db:
                 subscriptions = db.query(EmailSubscription).filter(
                     EmailSubscription.is_active == True
                 ).all()
+                # 在会话内提取所有邮件地址，避免会话关闭后访问属性
+                emails = [sub.email for sub in subscriptions]
             
-            if not subscriptions:
+            if not emails:
                 print("没有激活的邮箱订阅，跳过邮件发送")
                 return
             
@@ -79,8 +82,6 @@ class TaskWorker:
             if not email_service.is_configured():
                 print("邮件服务未配置，跳过邮件发送")
                 return
-            
-            emails = [sub.email for sub in subscriptions]
             print(f"准备向 {len(emails)} 个邮箱发送总结邮件")
             
             results = email_service.send_batch_summary_emails(

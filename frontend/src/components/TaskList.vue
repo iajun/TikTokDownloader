@@ -32,6 +32,15 @@
             批量总结
           </a-button>
           <a-button
+            v-if="canSendEmail"
+            type="primary"
+            @click="handleBatchSendEmail"
+            :loading="batchSendEmailLoading"
+            :icon="h(MailOutlined)"
+          >
+            批量发送邮件
+          </a-button>
+          <a-button
             v-if="props.showRemoveFromFolder && props.folderId"
             danger
             @click="batchRemoveFromFolder"
@@ -99,6 +108,15 @@
             <a-space>
               <a-button type="link" size="small" @click="viewTask(item)">查看</a-button>
               <a-button
+                v-if="item.status === 'completed' && item.summary"
+                type="link"
+                size="small"
+                @click="sendEmail(item)"
+                :loading="sendEmailLoadingMap[item.id]"
+              >
+                发送邮件
+              </a-button>
+              <a-button
                 v-if="item.status !== 'completed'"
                 type="link"
                 size="small"
@@ -163,9 +181,9 @@ import { message, Modal } from 'ant-design-vue'
 import type { TaskStatus } from '@/api/task'
 import { useRouter } from 'vue-router'
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
-import { retryTask as retryTaskApi, batchDeleteTasks, resummarizeTask } from '@/api/task'
+import { retryTask as retryTaskApi, batchDeleteTasks, resummarizeTask, sendTaskEmail } from '@/api/task'
 import { addTasksToCollection, removeTaskFromCollection, batchRemoveTasksFromCollection, getCollectionTree } from '@/api/collection'
-import { StarOutlined, FileTextOutlined } from '@ant-design/icons-vue'
+import { StarOutlined, FileTextOutlined, MailOutlined } from '@ant-design/icons-vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -173,6 +191,8 @@ const retryLoadingMap = ref<{ [key: number]: boolean }>({})
 const selectedRowKeys = ref<number[]>([])
 const batchDeleteLoading = ref(false)
 const batchSummarizeLoading = ref(false)
+const sendEmailLoadingMap = ref<{ [key: number]: boolean }>({})
+const batchSendEmailLoading = ref(false)
 
 // 添加到收藏夹相关状态
 const addToCollectionModalVisible = ref(false)
@@ -229,6 +249,14 @@ const canBatchSummarize = computed(() => {
   return selectedRowKeys.value.some(id => {
     const task = props.tasks.find(t => t.id === id)
     return task && task.status === 'completed' && task.transcription
+  })
+})
+
+// 判断是否可以批量发送邮件（选中的任务中有已完成且有总结的任务）
+const canSendEmail = computed(() => {
+  return selectedRowKeys.value.some(id => {
+    const task = props.tasks.find(t => t.id === id)
+    return task && task.status === 'completed' && task.summary
   })
 })
 
@@ -561,6 +589,111 @@ const handleBatchSummarize = () => {
         message.error(error.response?.data?.detail || error.message || '批量总结失败')
       } finally {
         batchSummarizeLoading.value = false
+      }
+    },
+  })
+}
+
+// 发送单个任务邮件
+const sendEmail = async (task: TaskStatus) => {
+  if (!task.summary) {
+    message.warning('该任务没有总结内容，无法发送邮件')
+    return
+  }
+  
+  sendEmailLoadingMap.value[task.id] = true
+  try {
+    const response = await sendTaskEmail(task.id)
+    if (response.success) {
+      const { success_count, total_emails } = response.data
+      message.success(`邮件已发送到 ${success_count}/${total_emails} 个订阅邮箱`)
+    } else {
+      message.error(response.message || '发送邮件失败')
+    }
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.detail || error.message || '发送邮件失败'
+    message.error(errorMessage)
+  } finally {
+    sendEmailLoadingMap.value[task.id] = false
+  }
+}
+
+// 批量发送邮件
+const handleBatchSendEmail = () => {
+  // 筛选出可以发送邮件的任务（已完成且有总结）
+  const sendableTasks = selectedRowKeys.value.filter(id => {
+    const task = props.tasks.find(t => t.id === id)
+    return task && task.status === 'completed' && task.summary
+  })
+  
+  if (sendableTasks.length === 0) {
+    message.warning('所选任务中没有可以发送邮件的任务（需要已完成且有总结）')
+    return
+  }
+  
+  Modal.confirm({
+    title: '确认批量发送邮件',
+    icon: h(ExclamationCircleOutlined),
+    content: `确定要向所有订阅邮箱发送选中的 ${sendableTasks.length} 个任务的总结邮件吗？`,
+    okText: '发送',
+    okType: 'primary',
+    async onOk() {
+      batchSendEmailLoading.value = true
+      let successCount = 0
+      let failCount = 0
+      let totalEmails = 0
+      
+      try {
+        // 并发控制：最多同时处理5个请求
+        const CONCURRENT_LIMIT = 5
+        const tasks = [...sendableTasks]
+        
+        // 分批处理任务
+        for (let i = 0; i < tasks.length; i += CONCURRENT_LIMIT) {
+          const batch = tasks.slice(i, i + CONCURRENT_LIMIT)
+          const batchPromises = batch.map(async (taskId) => {
+            try {
+              const response = await sendTaskEmail(taskId)
+              if (response.success) {
+                totalEmails += response.data.total_emails
+                return { 
+                  success: true, 
+                  taskId,
+                  successCount: response.data.success_count,
+                  totalEmails: response.data.total_emails
+                }
+              } else {
+                return { success: false, taskId }
+              }
+            } catch (error: any) {
+              console.error(`Task ${taskId} email sending failed:`, error)
+              return { success: false, taskId }
+            }
+          })
+          
+          const batchResults = await Promise.all(batchPromises)
+          batchResults.forEach(result => {
+            if (result.success) {
+              successCount++
+            } else {
+              failCount++
+            }
+          })
+        }
+        
+        if (successCount > 0) {
+          message.success(
+            `成功发送 ${successCount} 个任务的邮件${failCount > 0 ? `，${failCount} 个任务失败` : ''}，共发送到 ${totalEmails} 个邮箱`
+          )
+          selectedRowKeys.value = []
+          emit('refresh')
+        } else {
+          message.error('所有任务的邮件发送都失败了')
+        }
+      } catch (error: any) {
+        message.error(error.response?.data?.detail || error.message || '批量发送邮件失败')
+      } finally {
+        batchSendEmailLoading.value = false
       }
     },
   })

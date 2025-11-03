@@ -208,3 +208,22 @@ export const retryTask = (taskId: number) => {
 export const refreshUrls = (taskId: number) => {
   return api.get<RecordResponse>(`/v1/tasks/${taskId}/refresh-urls`)
 }
+
+export interface SendEmailResponse {
+  success: boolean
+  message: string
+  data: {
+    task_id: number
+    total_emails: number
+    success_count: number
+    failed_count: number
+    results: { [email: string]: boolean }
+  }
+}
+
+/**
+ * 发送任务邮件到所有激活的订阅邮箱
+ */
+export const sendTaskEmail = (taskId: number) => {
+  return api.post<SendEmailResponse>(`/v1/tasks/${taskId}/send-email`)
+}
