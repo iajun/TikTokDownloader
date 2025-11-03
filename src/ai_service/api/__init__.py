@@ -7,9 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from ..db import init_db, get_db_session
-from ..workers import background_task_processor
+from ..workers import background_task_processor, get_async_processor
 from ..utils.task_queue import submit_io_nonblocking
 from ..models import Setting, Prompt, AIMethod
+import asyncio
 
 # 创建 FastAPI 应用
 app = FastAPI(
@@ -30,7 +31,7 @@ app.add_middleware(
 
 # 启动时初始化数据库
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     """启动时执行的操作"""
     try:
         init_db()
@@ -107,9 +108,22 @@ def startup_event():
     except Exception as e:
         print(f"Failed to initialize database: {e}")
     
-    # 启动后台任务处理器（在线程池中）
-    submit_io_nonblocking(background_task_processor)
-    print("Background task processor started")
+    # 启动异步任务处理器（推荐使用）
+    # 也可以选择使用同步的 background_task_processor
+    use_async_processor = os.getenv("USE_ASYNC_PROCESSOR", "true").lower() == "true"
+    
+    if use_async_processor:
+        # 启动异步任务处理器（在后台运行）
+        processor = get_async_processor(max_concurrent_tasks=int(
+            os.getenv("MAX_CONCURRENT_TASKS", "5")
+        ))
+        # 使用 asyncio.create_task 在后台启动
+        asyncio.create_task(processor.start())
+        print("Async task processor started")
+    else:
+        # 启动同步后台任务处理器（在线程池中）
+        submit_io_nonblocking(background_task_processor)
+        print("Background task processor started (sync mode)")
 
 
 # 根路径
