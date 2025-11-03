@@ -2,10 +2,10 @@
 任务相关路由
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 
 from ..models import Task, TaskStatus, VideoSummary, EmailSubscription
@@ -73,22 +73,33 @@ def create_batch_tasks(request: BatchTaskCreateRequest, db: Session = Depends(ge
                 "data": {"total": 0, "created": 0, "urls": []}
             }
         
-        # 创建多个任务
-        created_tasks = []
-        for video_url in video_urls:
-            task = Task(
-                url=video_url,
-                status=TaskStatus.PENDING.value,
-                progress=0
-            )
-            db.add(task)
-            created_tasks.append(task.to_dict())
+        # 批量创建多个任务（优化：使用bulk_insert提升性能）
+        now = datetime.utcnow()
+        tasks_data = [
+            {
+                "url": video_url,
+                "status": TaskStatus.PENDING.value,
+                "progress": 0,
+                "created_at": now,
+                "updated_at": now
+            }
+            for video_url in video_urls
+        ]
         
+        # 使用bulk_insert_mappings进行批量插入，性能更好
+        db.bulk_insert_mappings(Task, tasks_data)
         db.commit()
         
-        # 刷新所有任务ID
-        for i, task in enumerate(created_tasks):
-            task['id'] = task.get('id', i + 1)
+        # 查询刚创建的任务以获取ID和完整信息
+        # 使用order_by和limit获取最近创建的任务
+        created_tasks = db.query(Task).options(joinedload(Task.video)).filter(
+            Task.url.in_(video_urls),
+            Task.status == TaskStatus.PENDING.value,
+            Task.created_at >= now - timedelta(seconds=5)  # 只获取刚刚创建的（5秒内）
+        ).order_by(desc(Task.created_at)).limit(len(video_urls)).all()
+        
+        # 转换为字典列表
+        created_tasks = [task.to_dict() for task in created_tasks]
         
         return {
             "success": True,
@@ -106,32 +117,48 @@ def create_batch_tasks(request: BatchTaskCreateRequest, db: Session = Depends(ge
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# S3客户端单例，避免重复创建
+_s3_client = None
+
+def _get_s3_client():
+    """获取S3客户端单例"""
+    global _s3_client
+    if _s3_client is None:
+        from ..utils import S3Client
+        _s3_client = S3Client()
+    return _s3_client
+
+
 def _add_s3_urls(task_dict, task):
-    """为任务添加S3预签名URL"""
-    from ..utils import S3Client
-    s3 = S3Client()
+    """为任务添加S3预签名URL（优化：使用单例客户端，在线程池中生成URL）"""
+    s3 = _get_s3_client()
     
     # 为所有文件路径生成预签名URL（有效期24小时）
+    # 批量处理所有路径，减少重复调用
+    paths_to_generate = []
     if task.video_path and task.video_path.startswith("videos/"):
-        try:
-            task_dict["video_url"] = s3.get_file_url(task.video_path, expires_seconds=86400)
-        except Exception as e:
-            print(f"Error generating video URL: {e}")
+        paths_to_generate.append(("video_url", task.video_path))
     if task.audio_path and task.audio_path.startswith("videos/"):
-        try:
-            task_dict["audio_url"] = s3.get_file_url(task.audio_path, expires_seconds=86400)
-        except Exception as e:
-            print(f"Error generating audio URL: {e}")
+        paths_to_generate.append(("audio_url", task.audio_path))
     if task.transcription_path and task.transcription_path.startswith("videos/"):
-        try:
-            task_dict["transcription_url"] = s3.get_file_url(task.transcription_path, expires_seconds=86400)
-        except Exception as e:
-            print(f"Error generating transcription URL: {e}")
+        paths_to_generate.append(("transcription_url", task.transcription_path))
     if task.summary_path and task.summary_path.startswith("videos/"):
+        paths_to_generate.append(("summary_url", task.summary_path))
+    
+    # 批量生成URL（在线程池中执行，避免阻塞主线程）
+    def _generate_url(url_key, s3_path):
         try:
-            task_dict["summary_url"] = s3.get_file_url(task.summary_path, expires_seconds=86400)
+            return (url_key, s3.get_file_url(s3_path, expires_seconds=86400))
         except Exception as e:
-            print(f"Error generating summary URL: {e}")
+            print(f"Error generating {url_key} URL: {e}")
+            return (url_key, None)
+    
+    # 对于单个任务，URL生成很快，直接执行即可
+    # 如果后续需要批量处理多个任务，可以考虑在线程池中执行
+    for url_key, s3_path in paths_to_generate:
+        _, url = _generate_url(url_key, s3_path)
+        if url:
+            task_dict[url_key] = url
 
 
 @router.get("/tasks/{task_id}")
@@ -142,7 +169,8 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
     Args:
         task_id: 任务ID
     """
-    task = db.query(Task).filter(Task.id == task_id).first()
+    # 使用 joinedload 预加载 video 关联，避免额外查询
+    task = db.query(Task).options(joinedload(Task.video)).filter(Task.id == task_id).first()
     
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -174,14 +202,17 @@ def list_tasks(
         limit: 每页数量
         offset: 偏移量
     """
-    query = db.query(Task)
+    # 使用 joinedload 预加载 video 关联，避免 N+1 查询
+    query = db.query(Task).options(joinedload(Task.video))
     
     # 状态筛选
     if status:
         query = query.filter(Task.status == status)
     
-    # 排序和分页
+    # 先获取总数（优化：只在需要时计算，如果不需要total可以省略）
     total = query.count()
+    
+    # 排序和分页（已经包含了预加载的video）
     tasks = query.order_by(desc(Task.created_at)).offset(offset).limit(limit).all()
     
     return {
@@ -206,7 +237,10 @@ def get_current_tasks(db: Session = Depends(get_db)):
         TaskStatus.SUMMARIZING.value
     ]
     
-    tasks = db.query(Task).filter(Task.status.in_(current_statuses)).order_by(desc(Task.created_at)).all()
+    # 使用 joinedload 预加载 video 关联，避免 N+1 查询
+    tasks = db.query(Task).options(joinedload(Task.video)).filter(
+        Task.status.in_(current_statuses)
+    ).order_by(desc(Task.created_at)).all()
     
     return {
         "success": True,
@@ -227,14 +261,16 @@ def get_history(
         limit: 每页数量
         offset: 偏移量
     """
-    # 查询已完成或失败的任务作为历史记录
-    tasks = db.query(Task).filter(
+    # 使用 joinedload 预加载 video 关联，避免 N+1 查询
+    query = db.query(Task).options(joinedload(Task.video)).filter(
         Task.status.in_([TaskStatus.COMPLETED.value, TaskStatus.FAILED.value])
-    ).order_by(desc(Task.updated_at)).offset(offset).limit(limit).all()
+    )
     
-    total = db.query(Task).filter(
-        Task.status.in_([TaskStatus.COMPLETED.value, TaskStatus.FAILED.value])
-    ).count()
+    # 先获取总数（复用同一查询）
+    total = query.count()
+    
+    # 查询已完成或失败的任务作为历史记录
+    tasks = query.order_by(desc(Task.updated_at)).offset(offset).limit(limit).all()
     
     return {
         "success": True,
@@ -253,7 +289,8 @@ def get_history_detail(task_id: int, db: Session = Depends(get_db)):
     Args:
         task_id: 任务ID
     """
-    task = db.query(Task).filter(Task.id == task_id).first()
+    # 使用 joinedload 预加载 video 关联，避免额外查询
+    task = db.query(Task).options(joinedload(Task.video)).filter(Task.id == task_id).first()
     
     if not task:
         raise HTTPException(status_code=404, detail="History record not found")

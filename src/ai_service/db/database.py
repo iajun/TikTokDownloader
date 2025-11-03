@@ -117,12 +117,18 @@ if DB_TYPE == "supabase" and database_url.startswith("postgresql://"):
     # SQLAlchemy 会自动识别 postgresql:// 协议并使用 psycopg2
     pass
 
+# 优化连接池配置以提升性能
+# pool_size: 保持的连接数
+# max_overflow: 允许的额外连接数（临时）
+# pool_pre_ping: 自动检测并重连断开的连接
+# pool_recycle: 连接回收时间（秒），避免长时间连接导致的问题
 engine = create_engine(
     database_url,
     poolclass=QueuePool,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=20,  # 增加连接池大小（从10增加到20）
+    max_overflow=30,  # 增加溢出连接数（从20增加到30）
     pool_pre_ping=True,  # 自动检测断开的连接
+    pool_recycle=3600,  # 每小时回收一次连接，避免长时间连接问题
     echo=False,
     connect_args=connect_args
 )
