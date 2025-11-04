@@ -8,9 +8,9 @@ from typing import Optional
 from datetime import datetime, timedelta
 import os
 
-from ..models import Task, TaskStatus, VideoSummary, EmailSubscription
+from ..models import Task, TaskStatus, VideoSummary, EmailSubscription, Video
 from ..db import get_db, get_db_session
-from ..services import AISummarizer, EmailService, TranscriptionService
+from ..services import AISummarizer, EmailService, TranscriptionService, ObsidianService
 from .schemas import TaskCreateRequest, BatchTaskCreateRequest, ResummarizeRequest, BatchDeleteRequest
 from ..utils.task_queue import run_coro_blocking, run_io_blocking
 from ..utils import S3Client
@@ -460,6 +460,60 @@ def _resummarize_background_task_sync(task_id: int, custom_prompt: Optional[str]
                     db.add(video_summary)
                     db.commit()
                     print(f"Summary regenerated successfully for task {task_id}, created VideoSummary record with name: {summary_name}")
+                    
+                    # 同步到 Obsidian
+                    try:
+                        # 获取视频信息
+                        video = db.query(Video).filter(Video.video_id == video_id).first()
+                        if video:
+                            video_info = {
+                                'video_id': video_id,
+                                'platform': video.platform or 'douyin',
+                                'desc': video.desc or '无标题',
+                                'nickname': video.nickname or '未知',
+                                'url': video.share_url or '',
+                                'share_url': video.share_url or '',
+                                'digg_count': video.digg_count or 0,
+                                'comment_count': video.comment_count or 0,
+                                'share_count': video.share_count or 0,
+                            }
+                            
+                            obsidian_service = ObsidianService()
+                            if obsidian_service.is_configured():
+                                file_path = obsidian_service.save_summary_to_obsidian(
+                                    video_info,
+                                    summary,
+                                    summary_name
+                                )
+                                if file_path:
+                                    print(f"Summary synced to Obsidian: {file_path}")
+                        else:
+                            # 如果没有视频记录，使用任务信息
+                            video_info = {
+                                'video_id': video_id,
+                                'platform': task.platform or 'douyin',
+                                'desc': '无标题',
+                                'nickname': '未知',
+                                'url': task.url or '',
+                                'share_url': task.url or '',
+                                'digg_count': 0,
+                                'comment_count': 0,
+                                'share_count': 0,
+                            }
+                            
+                            obsidian_service = ObsidianService()
+                            if obsidian_service.is_configured():
+                                file_path = obsidian_service.save_summary_to_obsidian(
+                                    video_info,
+                                    summary,
+                                    summary_name
+                                )
+                                if file_path:
+                                    print(f"Summary synced to Obsidian: {file_path}")
+                    except Exception as e:
+                        print(f"Failed to sync summary to Obsidian: {str(e)}")
+                        # 不影响主流程
+                
                 else:
                     task.status = TaskStatus.COMPLETED.value
                     task.progress = 100
@@ -808,6 +862,108 @@ def send_task_email(task_id: int, db: Session = Depends(get_db)):
                 "success_count": success_count,
                 "failed_count": failed_count,
                 "results": results
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/obsidian/status")
+def get_obsidian_status():
+    """检查 Obsidian 服务是否已配置"""
+    try:
+        obsidian_service = ObsidianService()
+        is_configured = obsidian_service.is_configured()
+        
+        return {
+            "success": True,
+            "data": {
+                "is_configured": is_configured,
+                "vault_path": str(obsidian_service.vault_path) if obsidian_service.vault_path else None,
+                "summaries_folder": obsidian_service.summaries_folder
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "data": {
+                "is_configured": False
+            }
+        }
+
+
+@router.post("/tasks/{task_id}/send-to-obsidian")
+def send_task_to_obsidian(task_id: int, db: Session = Depends(get_db)):
+    """
+    手动发送任务总结到 Obsidian
+    
+    Args:
+        task_id: 任务ID
+    """
+    try:
+        task = db.query(Task).filter(Task.id == task_id).first()
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        # 检查任务是否已完成且有总结
+        if task.status != TaskStatus.COMPLETED.value:
+            raise HTTPException(status_code=400, detail="Task is not completed yet")
+        
+        # 获取最新的总结
+        latest_summary = db.query(VideoSummary).filter(
+            VideoSummary.task_id == task_id
+        ).order_by(VideoSummary.created_at.desc()).first()
+        
+        summary_content = None
+        summary_name = "总结"
+        
+        if latest_summary:
+            summary_content = latest_summary.content
+            summary_name = latest_summary.name or "总结"
+        elif task.summary:
+            summary_content = task.summary
+        else:
+            raise HTTPException(status_code=400, detail="Task has no summary available")
+        
+        # 检查 Obsidian 服务是否配置
+        obsidian_service = ObsidianService()
+        if not obsidian_service.is_configured():
+            raise HTTPException(status_code=500, detail="Obsidian service is not configured")
+        
+        # 构建视频信息字典
+        video_info = {
+            'video_id': task.video_id or 'unknown',
+            'platform': task.platform or 'douyin',
+            'desc': task.video.desc if task.video and task.video.desc else '无标题',
+            'nickname': task.video.nickname if task.video and task.video.nickname else '未知',
+            'url': task.url,
+            'share_url': task.video.share_url if task.video and task.video.share_url else task.url,
+            'digg_count': task.video.digg_count if task.video and task.video.digg_count else 0,
+            'comment_count': task.video.comment_count if task.video and task.video.comment_count else 0,
+            'share_count': task.video.share_count if task.video and task.video.share_count else 0,
+        }
+        
+        # 保存到 Obsidian
+        file_path = obsidian_service.save_summary_to_obsidian(
+            video_info,
+            summary_content,
+            summary_name
+        )
+        
+        if not file_path:
+            raise HTTPException(status_code=500, detail="Failed to save summary to Obsidian")
+        
+        return {
+            "success": True,
+            "message": "Summary saved to Obsidian successfully",
+            "data": {
+                "task_id": task_id,
+                "file_path": file_path
             }
         }
         

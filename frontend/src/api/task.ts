@@ -241,3 +241,36 @@ export interface SendEmailResponse {
 export const sendTaskEmail = (taskId: number) => {
   return api.post<SendEmailResponse>(`/v1/tasks/${taskId}/send-email`)
 }
+
+export interface ObsidianStatusResponse {
+  success: boolean
+  message?: string
+  data: {
+    is_configured: boolean
+    vault_path?: string | null
+    summaries_folder?: string
+  }
+}
+
+/**
+ * 检查 Obsidian 服务是否已配置
+ */
+export const getObsidianStatus = () => {
+  return api.get<ObsidianStatusResponse>('/v1/obsidian/status')
+}
+
+export interface SendToObsidianResponse {
+  success: boolean
+  message: string
+  data: {
+    task_id: number
+    file_path: string
+  }
+}
+
+/**
+ * 发送任务总结到 Obsidian
+ */
+export const sendTaskToObsidian = (taskId: number) => {
+  return api.post<SendToObsidianResponse>(`/v1/tasks/${taskId}/send-to-obsidian`)
+}

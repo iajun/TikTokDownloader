@@ -10,7 +10,7 @@ import os
 from contextlib import asynccontextmanager
 
 from ..utils import VideoProcessor, AudioExtractor, S3Client
-from ..services import TranscriptionService, AISummarizer, EmailService
+from ..services import TranscriptionService, AISummarizer, EmailService, ObsidianService
 from ..models import Task, TaskStatus, Video, VideoSummary, EmailSubscription
 from ..db import get_db_session
 from ..utils.task_queue import run_io_bound, run_cpu_bound, get_task_queue
@@ -198,6 +198,70 @@ class AsyncTaskProcessor:
             
         except Exception as e:
             print(f"Failed to send email notifications: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    async def _send_to_obsidian(
+        self, 
+        task_id: int, 
+        video_id: str, 
+        summary: str, 
+        detail_dict: dict
+    ):
+        """异步同步总结到 Obsidian"""
+        try:
+            # 获取总结名称（从数据库查询最新的总结记录）
+            def _get_summary_info():
+                with get_db_session() as db:
+                    # 获取最新的总结记录
+                    latest_summary = db.query(VideoSummary).filter(
+                        VideoSummary.task_id == task_id
+                    ).order_by(VideoSummary.created_at.desc()).first()
+                    
+                    summary_name = "总结"
+                    if latest_summary:
+                        summary_name = latest_summary.name or "总结"
+                    
+                    return summary_name
+            
+            summary_name = await run_io_bound(_get_summary_info)
+            
+            video_info = {
+                'video_id': video_id,
+                'platform': detail_dict.get('platform', 'douyin'),
+                'desc': detail_dict.get('desc', '无标题'),
+                'nickname': detail_dict.get('nickname', '未知'),
+                'url': detail_dict.get('share_url', ''),
+                'share_url': detail_dict.get('share_url', ''),
+                'digg_count': detail_dict.get('digg_count', 0),
+                'comment_count': detail_dict.get('comment_count', 0),
+                'share_count': detail_dict.get('share_count', 0),
+            }
+            
+            obsidian_service = ObsidianService()
+            if not obsidian_service.is_configured():
+                print("Obsidian service not configured, skipping Obsidian sync")
+                return
+            
+            print(f"Preparing to save summary to Obsidian")
+            
+            # 在线程池中执行 Obsidian 同步（因为 ObsidianService 是同步的）
+            def _save_to_obsidian():
+                result = obsidian_service.save_summary_to_obsidian(
+                    video_info,
+                    summary,
+                    summary_name
+                )
+                return result
+            
+            file_path = await run_io_bound(_save_to_obsidian)
+            if file_path:
+                print(f"Summary saved to Obsidian: {file_path}")
+            else:
+                print(f"Failed to save summary to Obsidian")
+            
+        except Exception as e:
+            print(f"Failed to save summary to Obsidian: {str(e)}")
             import traceback
             traceback.print_exc()
     
@@ -465,6 +529,9 @@ class AsyncTaskProcessor:
             
             # 发送邮件通知
             await self._send_email_notifications(task_id, video_id, summary, detail_dict)
+            
+            # 同步到 Obsidian
+            await self._send_to_obsidian(task_id, video_id, summary, detail_dict)
             
             # 更新完成状态
             await self._update_task_status(

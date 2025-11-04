@@ -31,8 +31,35 @@
           >
             批量总结
           </a-button>
+          <a-dropdown v-if="canSendEmail && obsidianConfigured">
+            <a-button
+              type="primary"
+              :loading="batchSendEmailLoading || batchSendToObsidianLoading"
+              :icon="h(MailOutlined)"
+            >
+              批量发送 <DownOutlined />
+            </a-button>
+            <template #overlay>
+              <a-menu>
+                <a-menu-item 
+                  key="email"
+                  @click="handleBatchSendEmail"
+                  :loading="batchSendEmailLoading"
+                >
+                  <MailOutlined /> 批量发送邮件
+                </a-menu-item>
+                <a-menu-item 
+                  key="obsidian"
+                  @click="handleBatchSendToObsidian"
+                  :loading="batchSendToObsidianLoading"
+                >
+                  📝 批量发送到 Obsidian
+                </a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
           <a-button
-            v-if="canSendEmail"
+            v-else-if="canSendEmail"
             type="primary"
             @click="handleBatchSendEmail"
             :loading="batchSendEmailLoading"
@@ -107,15 +134,40 @@
           <template #actions>
             <a-space>
               <a-button type="link" size="small" @click="viewTask(item)">查看</a-button>
-              <a-button
-                v-if="item.status === 'completed' && item.summary"
-                type="link"
-                size="small"
-                @click="sendEmail(item)"
-                :loading="sendEmailLoadingMap[item.id]"
-              >
-                发送邮件
-              </a-button>
+              <template v-if="item.status === 'completed' && item.summary">
+                <a-dropdown v-if="obsidianConfigured">
+                  <a-button type="link" size="small">
+                    发送 <DownOutlined />
+                  </a-button>
+                  <template #overlay>
+                    <a-menu>
+                      <a-menu-item 
+                        key="email"
+                        @click="sendEmail(item)"
+                        :loading="sendEmailLoadingMap[item.id]"
+                      >
+                        <MailOutlined /> 发送邮件
+                      </a-menu-item>
+                      <a-menu-item 
+                        key="obsidian"
+                        @click="sendToObsidian(item)"
+                        :loading="sendToObsidianLoadingMap[item.id]"
+                      >
+                        📝 发送到 Obsidian
+                      </a-menu-item>
+                    </a-menu>
+                  </template>
+                </a-dropdown>
+                <a-button
+                  v-else
+                  type="link"
+                  size="small"
+                  @click="sendEmail(item)"
+                  :loading="sendEmailLoadingMap[item.id]"
+                >
+                  发送邮件
+                </a-button>
+              </template>
               <a-button
                 v-if="item.status !== 'completed'"
                 type="link"
@@ -176,14 +228,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, h, computed, watch } from 'vue'
+import { ref, h, computed, watch, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import type { TaskStatus } from '@/api/task'
 import { useRouter } from 'vue-router'
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
-import { retryTask as retryTaskApi, batchDeleteTasks, resummarizeTask, sendTaskEmail } from '@/api/task'
+import { retryTask as retryTaskApi, batchDeleteTasks, resummarizeTask, sendTaskEmail, getObsidianStatus, sendTaskToObsidian } from '@/api/task'
 import { addTasksToCollection, removeTaskFromCollection, batchRemoveTasksFromCollection, getCollectionTree } from '@/api/collection'
-import { StarOutlined, FileTextOutlined, MailOutlined } from '@ant-design/icons-vue'
+import { StarOutlined, FileTextOutlined, MailOutlined, DownOutlined } from '@ant-design/icons-vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -192,7 +244,10 @@ const selectedRowKeys = ref<number[]>([])
 const batchDeleteLoading = ref(false)
 const batchSummarizeLoading = ref(false)
 const sendEmailLoadingMap = ref<{ [key: number]: boolean }>({})
+const sendToObsidianLoadingMap = ref<{ [key: number]: boolean }>({})
 const batchSendEmailLoading = ref(false)
+const batchSendToObsidianLoading = ref(false)
+const obsidianConfigured = ref(false)
 
 // 添加到收藏夹相关状态
 const addToCollectionModalVisible = ref(false)
@@ -594,6 +649,19 @@ const handleBatchSummarize = () => {
   })
 }
 
+// 检查 Obsidian 配置
+const checkObsidianConfig = async () => {
+  try {
+    const response = await getObsidianStatus()
+    if (response.success && response.data) {
+      obsidianConfigured.value = response.data.is_configured || false
+    }
+  } catch (error) {
+    console.error('Failed to check Obsidian status:', error)
+    obsidianConfigured.value = false
+  }
+}
+
 // 发送单个任务邮件
 const sendEmail = async (task: TaskStatus) => {
   if (!task.summary) {
@@ -615,6 +683,29 @@ const sendEmail = async (task: TaskStatus) => {
     message.error(errorMessage)
   } finally {
     sendEmailLoadingMap.value[task.id] = false
+  }
+}
+
+// 发送单个任务到 Obsidian
+const sendToObsidian = async (task: TaskStatus) => {
+  if (!task.summary) {
+    message.warning('该任务没有总结内容，无法发送到 Obsidian')
+    return
+  }
+  
+  sendToObsidianLoadingMap.value[task.id] = true
+  try {
+    const response = await sendTaskToObsidian(task.id)
+    if (response.success) {
+      message.success(`总结已保存到 Obsidian: ${response.data.file_path}`)
+    } else {
+      message.error(response.message || '发送到 Obsidian 失败')
+    }
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.detail || error.message || '发送到 Obsidian 失败'
+    message.error(errorMessage)
+  } finally {
+    sendToObsidianLoadingMap.value[task.id] = false
   }
 }
 
@@ -699,6 +790,80 @@ const handleBatchSendEmail = () => {
   })
 }
 
+// 批量发送到 Obsidian
+const handleBatchSendToObsidian = () => {
+  // 筛选出可以发送到 Obsidian 的任务（已完成且有总结）
+  const sendableTasks = selectedRowKeys.value.filter(id => {
+    const task = props.tasks.find(t => t.id === id)
+    return task && task.status === 'completed' && task.summary
+  })
+  
+  if (sendableTasks.length === 0) {
+    message.warning('所选任务中没有可以发送到 Obsidian 的任务（需要已完成且有总结）')
+    return
+  }
+  
+  Modal.confirm({
+    title: '确认批量发送到 Obsidian',
+    icon: h(ExclamationCircleOutlined),
+    content: `确定要将选中的 ${sendableTasks.length} 个任务的总结发送到 Obsidian 吗？`,
+    okText: '发送',
+    okType: 'primary',
+    async onOk() {
+      batchSendToObsidianLoading.value = true
+      let successCount = 0
+      let failCount = 0
+      
+      try {
+        // 并发控制：最多同时处理5个请求
+        const CONCURRENT_LIMIT = 5
+        const tasks = [...sendableTasks]
+        
+        // 分批处理任务
+        for (let i = 0; i < tasks.length; i += CONCURRENT_LIMIT) {
+          const batch = tasks.slice(i, i + CONCURRENT_LIMIT)
+          const batchPromises = batch.map(async (taskId) => {
+            try {
+              const response = await sendTaskToObsidian(taskId)
+              return { 
+                success: response.success, 
+                taskId,
+                filePath: response.data?.file_path
+              }
+            } catch (error: any) {
+              console.error(`Task ${taskId} Obsidian sync failed:`, error)
+              return { success: false, taskId }
+            }
+          })
+          
+          const batchResults = await Promise.all(batchPromises)
+          batchResults.forEach(result => {
+            if (result.success) {
+              successCount++
+            } else {
+              failCount++
+            }
+          })
+        }
+        
+        if (successCount > 0) {
+          message.success(
+            `成功发送 ${successCount} 个任务的总结到 Obsidian${failCount > 0 ? `，${failCount} 个任务失败` : ''}`
+          )
+          selectedRowKeys.value = []
+          emit('refresh')
+        } else {
+          message.error('所有任务的 Obsidian 同步都失败了')
+        }
+      } catch (error: any) {
+        message.error(error.response?.data?.detail || error.message || '批量发送到 Obsidian 失败')
+      } finally {
+        batchSendToObsidianLoading.value = false
+      }
+    },
+  })
+}
+
 // 监听 tasks 变化，清除不可用的选中项
 watch(() => props.tasks, () => {
   // 移除已不在列表中或不可选择的任务
@@ -707,6 +872,11 @@ watch(() => props.tasks, () => {
     return task && (task.status === 'completed' || task.status === 'failed')
   })
 }, { deep: true })
+
+// 组件挂载时检查 Obsidian 配置
+onMounted(() => {
+  checkObsidianConfig()
+})
 </script>
 
 <style scoped>

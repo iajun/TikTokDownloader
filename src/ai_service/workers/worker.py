@@ -18,7 +18,7 @@ load_dotenv(env_path)
 
 from src.application import TikTokDownloader
 from ..utils import VideoProcessor, AudioExtractor, S3Client
-from ..services import TranscriptionService, AISummarizer, EmailService
+from ..services import TranscriptionService, AISummarizer, EmailService, ObsidianService
 from ..models import Task, TaskStatus, Video, VideoSummary, EmailSubscription
 from ..db import get_db_session
 from ..utils.task_queue import run_coro_blocking, run_io_blocking, submit_io_nonblocking, get_task_queue
@@ -97,6 +97,57 @@ class TaskWorker:
         except Exception as e:
             # 邮件发送失败不应影响任务完成
             print(f"发送邮件通知失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def _send_to_obsidian(self, task_id: int, video_id: str, summary: str, detail_dict: dict):
+        """同步总结到 Obsidian"""
+        try:
+            # 获取总结名称（从数据库查询最新的总结记录）
+            summary_name = "总结"
+            with get_db_session() as db:
+                latest_summary = db.query(VideoSummary).filter(
+                    VideoSummary.task_id == task_id
+                ).order_by(VideoSummary.created_at.desc()).first()
+                
+                if latest_summary:
+                    summary_name = latest_summary.name or "总结"
+            
+            # 构建视频信息字典
+            video_info = {
+                'video_id': video_id,
+                'platform': detail_dict.get('platform', 'douyin'),
+                'desc': detail_dict.get('desc', '无标题'),
+                'nickname': detail_dict.get('nickname', '未知'),
+                'url': detail_dict.get('share_url', ''),
+                'share_url': detail_dict.get('share_url', ''),
+                'digg_count': detail_dict.get('digg_count', 0),
+                'comment_count': detail_dict.get('comment_count', 0),
+                'share_count': detail_dict.get('share_count', 0),
+            }
+            
+            # 同步到 Obsidian
+            obsidian_service = ObsidianService()
+            if not obsidian_service.is_configured():
+                print("Obsidian 服务未配置，跳过 Obsidian 同步")
+                return
+            
+            print(f"准备保存总结到 Obsidian")
+            
+            file_path = obsidian_service.save_summary_to_obsidian(
+                video_info,
+                summary,
+                summary_name
+            )
+            
+            if file_path:
+                print(f"总结已保存到 Obsidian: {file_path}")
+            else:
+                print(f"保存总结到 Obsidian 失败")
+            
+        except Exception as e:
+            # Obsidian 同步失败不应影响任务完成
+            print(f"保存总结到 Obsidian 失败: {str(e)}")
             import traceback
             traceback.print_exc()
     
@@ -323,6 +374,9 @@ class TaskWorker:
             
             # 发送邮件通知（如果有订阅邮箱）
             self._send_email_notifications(task_id, video_id, summary, detail_dict)
+            
+            # 同步到 Obsidian
+            self._send_to_obsidian(task_id, video_id, summary, detail_dict)
             
             # 更新完成状态
             self._update_task_status(task_id, TaskStatus.COMPLETED.value, 100,
