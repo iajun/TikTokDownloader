@@ -115,6 +115,31 @@ export interface RecordResponse {
 }
 
 /**
+ * 分析视频链接 - 识别平台和类型
+ */
+export interface UrlAnalysis {
+  platform: string
+  platform_name: string
+  type: string
+  type_name: string
+  is_supported: boolean
+  url: string
+  video_id?: string
+  user_id?: string
+}
+
+export interface UrlAnalysisResponse {
+  success: boolean
+  data: UrlAnalysis
+}
+
+export const analyzeUrl = (url: string) => {
+  return api.get<UrlAnalysisResponse>('/v1/tasks/analyze', {
+    params: { url }
+  })
+}
+
+/**
  * 处理视频 - 创建任务
  */
 export const processVideo = (data: ProcessRequest) => {

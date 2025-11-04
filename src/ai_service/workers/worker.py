@@ -19,7 +19,7 @@ load_dotenv(env_path)
 from src.application import TikTokDownloader
 from ..utils import VideoProcessor, AudioExtractor, S3Client
 from ..services import TranscriptionService, AISummarizer, EmailService, ObsidianService
-from ..models import Task, TaskStatus, Video, VideoSummary, EmailSubscription
+from ..models import Task, TaskStatus, Video, VideoSummary, EmailSubscription, Setting
 from ..db import get_db_session
 from ..utils.task_queue import run_coro_blocking, run_io_blocking, submit_io_nonblocking, get_task_queue
 
@@ -167,6 +167,16 @@ class TaskWorker:
             
             print(f"Starting to process task {task_id} for URL: {task_url}")
             
+            # 获取 Bilibili cookies 设置
+            bilibili_cookies = None
+            try:
+                with get_db_session() as db:
+                    setting = db.query(Setting).filter(Setting.key == "bilibili_cookies").first()
+                    if setting and setting.value:
+                        bilibili_cookies = setting.value
+            except Exception as e:
+                print(f"获取 Bilibili cookies 设置失败: {e}")
+            
             # 定义完整的异步操作，确保在同一个事件循环中执行
             async def _process_video_download():
                 """在同一个事件循环中处理视频下载"""
@@ -176,7 +186,7 @@ class TaskWorker:
                     self._update_task_status(task_id, TaskStatus.DOWNLOADING.value, 20)
                     
                     # 1. 下载视频
-                    video_processor = VideoProcessor(downloader)
+                    video_processor = VideoProcessor(downloader, bilibili_cookies=bilibili_cookies)
                     return await video_processor.download_video(
                         url=task_url,
                         force_download=False

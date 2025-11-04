@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 
 from ..utils import VideoProcessor, AudioExtractor, S3Client
 from ..services import TranscriptionService, AISummarizer, EmailService, ObsidianService
-from ..models import Task, TaskStatus, Video, VideoSummary, EmailSubscription
+from ..models import Task, TaskStatus, Video, VideoSummary, EmailSubscription, Setting
 from ..db import get_db_session
 from ..utils.task_queue import run_io_bound, run_cpu_bound, get_task_queue
 from src.application import TikTokDownloader
@@ -294,9 +294,19 @@ class AsyncTaskProcessor:
             # 1. 下载视频（异步）
             await self._update_task_status(task_id, TaskStatus.DOWNLOADING.value, 20)
             
+            # 获取 Bilibili cookies 设置
+            bilibili_cookies = None
+            try:
+                with get_db_session() as db:
+                    setting = db.query(Setting).filter(Setting.key == "bilibili_cookies").first()
+                    if setting and setting.value:
+                        bilibili_cookies = setting.value
+            except Exception as e:
+                print(f"获取 Bilibili cookies 设置失败: {e}")
+            
             downloader = TikTokDownloader()
             async with downloader:
-                video_processor = VideoProcessor(downloader)
+                video_processor = VideoProcessor(downloader, bilibili_cookies=bilibili_cookies)
                 result = await video_processor.download_video(
                     url=task_url,
                     force_download=False
@@ -465,11 +475,12 @@ class AsyncTaskProcessor:
             # 3. 语音转文字（CPU密集型，使用进程池）
             await self._update_task_status(task_id, TaskStatus.TRANSCRIBING.value, 60)
             
-            transcription_service = TranscriptionService()
+            # 直接使用纯函数，避免传递包含不可 pickle 对象的服务实例
+            from ..services.transcription_service import _cpu_whisper_transcribe
             transcription = await run_cpu_bound(
-                transcription_service.transcribe,
+                _cpu_whisper_transcribe,
                 audio_path,
-                video_id
+                "large-v3-turbo"  # 模型名称
             )
             
             if not transcription:

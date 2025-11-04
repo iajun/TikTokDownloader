@@ -14,6 +14,7 @@ from ..services import AISummarizer, EmailService, TranscriptionService, Obsidia
 from .schemas import TaskCreateRequest, BatchTaskCreateRequest, ResummarizeRequest, BatchDeleteRequest
 from ..utils.task_queue import run_coro_blocking, run_io_blocking
 from ..utils import S3Client
+from ..utils.url_detector import analyze_url
 from .dependencies import _extract_video_urls, _delete_task_files
 import tempfile
 from pathlib import Path
@@ -51,6 +52,24 @@ def create_task(request: TaskCreateRequest, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/tasks/analyze")
+def analyze_task_url(url: str = Query(..., description="要分析的视频链接")):
+    """
+    分析视频链接，返回平台和类型信息
+    
+    Args:
+        url: 视频链接
+    """
+    try:
+        analysis = analyze_url(url)
+        return {
+            "success": True,
+            "data": analysis
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"分析链接失败: {str(e)}")
 
 
 @router.post("/tasks/batch")

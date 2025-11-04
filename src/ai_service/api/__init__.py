@@ -61,6 +61,7 @@ async def startup_event():
                 ("ai_temperature", "0.7", "AI 生成的随机性（0-2），值越高越随机"),
                 ("ai_model", "deepseek-chat", "使用的 AI 模型"),
                 ("ai_system_prompt", "", "AI 系统提示词"),
+                ("bilibili_cookies", "", "Bilibili Cookie 文件路径或内容（用于下载高质量视频，720p及以上需要登录）"),
             ]
             
             for key, value, description in default_ai_settings:

@@ -30,6 +30,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "python-dotenv>=1.0.0",
     "markdown>=3.4.0",
+    "you-get>=0.4.1700",
 ]
 
 [project.urls]
