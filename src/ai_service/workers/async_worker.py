@@ -475,12 +475,11 @@ class AsyncTaskProcessor:
             # 3. 语音转文字（CPU密集型，使用进程池）
             await self._update_task_status(task_id, TaskStatus.TRANSCRIBING.value, 60)
             
-            # 直接使用纯函数，避免传递包含不可 pickle 对象的服务实例
-            from ..services.transcription_service import _cpu_whisper_transcribe
+            # 直接使用纯函数，优先使用 faster_whisper，如果不可用则回退到标准 whisper
+            from ..services.transcription_service import _transcribe_auto
             transcription = await run_cpu_bound(
-                _cpu_whisper_transcribe,
+                _transcribe_auto,
                 audio_path,
-                "large-v3-turbo"  # 模型名称
             )
             
             if not transcription:

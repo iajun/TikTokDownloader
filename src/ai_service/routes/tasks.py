@@ -646,7 +646,7 @@ def _retranscribe_background_task_sync(task_id: int, model_name: Optional[str] =
         
         try:
             # 第三步：执行转录（在CPU进程池中执行，避免阻塞主线程）
-            transcription_service = TranscriptionService(model_name or "large-v3-turbo")
+            transcription_service = TranscriptionService(model_name or "base")
             transcription = transcription_service.transcribe(str(local_audio_path), video_id)
             
             if not transcription:
@@ -703,7 +703,7 @@ def _retranscribe_background_task_sync(task_id: int, model_name: Optional[str] =
 def retranscribe_task(
     task_id: int,
     background_tasks: BackgroundTasks,
-    model_name: Optional[str] = Query(None, description="可选的Whisper模型名称（默认: large-v3-turbo）"),
+    model_name: Optional[str] = Query(None, description="可选的Whisper模型名称（默认: base）"),
     db: Session = Depends(get_db)
 ):
     """
@@ -712,7 +712,7 @@ def retranscribe_task(
     Args:
         task_id: 任务ID
         background_tasks: FastAPI 后台任务
-        model_name: 可选的Whisper模型名称（默认: large-v3-turbo）
+        model_name: 可选的Whisper模型名称（默认: base）
     """
     try:
         task = db.query(Task).filter(Task.id == task_id).first()
